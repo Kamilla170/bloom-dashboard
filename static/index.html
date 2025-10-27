@@ -312,6 +312,102 @@
                 </div>
             </div>
 
+            <!-- Дополнительные метрики -->
+            <div class="charts-section">
+                <h2>📊 Дополнительная статистика</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">💬</div>
+                        <h3>Вопросов задано</h3>
+                        <div class="stat-value" id="questions-count">-</div>
+                        <div class="stat-percent">За неделю: <span id="questions-week">-</span></div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">📝</div>
+                        <h3>Отзывов получено</h3>
+                        <div class="stat-value" id="feedback-count">-</div>
+                        <div class="stat-percent">За неделю: <span id="feedback-week">-</span></div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">🌱</div>
+                        <h3>Выращивание с нуля</h3>
+                        <div class="stat-value" id="growing-active">-</div>
+                        <div class="stat-percent">Завершено: <span id="growing-completed">-</span></div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon">🌿</div>
+                        <h3>Всего растений</h3>
+                        <div class="stat-value" id="total-plants">-</div>
+                        <div class="stat-percent">В среднем: <span id="avg-plants">-</span> на пользователя</div>
+                    </div>
+                </div>
+
+                <!-- Топ-5 растений -->
+                <div class="day-stats" style="margin-top: 20px;">
+                    <h3>🏆 Топ-5 популярных растений</h3>
+                    <div id="top-plants-list">
+                        <div style="padding: 20px; text-align: center;">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Retention метрики -->
+            <div class="charts-section">
+                <h2>👥 Retention - возвращаемость пользователей</h2>
+                <div class="comparison-grid">
+                    <div class="day-stats">
+                        <h3>📅 Через 1 день</h3>
+                        <div class="day-stats-item">
+                            <span>Зарегистрировано:</span>
+                            <strong id="retention-1-cohort">-</strong>
+                        </div>
+                        <div class="day-stats-item">
+                            <span>Вернулись:</span>
+                            <strong id="retention-1-returned">-</strong>
+                        </div>
+                        <div class="day-stats-item">
+                            <span>Retention:</span>
+                            <strong id="retention-1-percent" style="color: #667eea; font-size: 1.3em;">-%</strong>
+                        </div>
+                    </div>
+
+                    <div class="day-stats">
+                        <h3>📅 Через 7 дней</h3>
+                        <div class="day-stats-item">
+                            <span>Зарегистрировано:</span>
+                            <strong id="retention-7-cohort">-</strong>
+                        </div>
+                        <div class="day-stats-item">
+                            <span>Вернулись:</span>
+                            <strong id="retention-7-returned">-</strong>
+                        </div>
+                        <div class="day-stats-item">
+                            <span>Retention:</span>
+                            <strong id="retention-7-percent" style="color: #667eea; font-size: 1.3em;">-%</strong>
+                        </div>
+                    </div>
+
+                    <div class="day-stats">
+                        <h3>📅 Через 30 дней</h3>
+                        <div class="day-stats-item">
+                            <span>Зарегистрировано:</span>
+                            <strong id="retention-30-cohort">-</strong>
+                        </div>
+                        <div class="day-stats-item">
+                            <span>Вернулись:</span>
+                            <strong id="retention-30-returned">-</strong>
+                        </div>
+                        <div class="day-stats-item">
+                            <span>Retention:</span>
+                            <strong id="retention-30-percent" style="color: #667eea; font-size: 1.3em;">-%</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Графики -->
             <div class="charts-section">
                 <h2>📈 Динамика за последние 7 дней</h2>
@@ -383,6 +479,46 @@
                 document.getElementById('yesterday-watered').textContent = `${yesterdayData.watered.count} (${yesterdayData.watered.percent}%)`;
                 document.getElementById('yesterday-added').textContent = `${yesterdayData.added_plants.count} (${yesterdayData.added_plants.percent}%)`;
                 document.getElementById('yesterday-active').textContent = `${yesterdayData.active.count} (${yesterdayData.active.percent}%)`;
+
+                // Загружаем дополнительные метрики
+                const additionalResponse = await fetch('/api/stats/additional');
+                if (additionalResponse.ok) {
+                    const additionalData = await additionalResponse.json();
+                    
+                    document.getElementById('questions-count').textContent = additionalData.questions.today;
+                    document.getElementById('questions-week').textContent = additionalData.questions.week;
+                    
+                    document.getElementById('feedback-count').textContent = additionalData.feedback.today;
+                    document.getElementById('feedback-week').textContent = additionalData.feedback.week;
+                    
+                    document.getElementById('growing-active').textContent = additionalData.growing.active;
+                    document.getElementById('growing-completed').textContent = additionalData.growing.completed;
+                    
+                    document.getElementById('total-plants').textContent = additionalData.plants.total;
+                    document.getElementById('avg-plants').textContent = additionalData.plants.avg_per_user;
+                    
+                    // Топ-5 растений
+                    const topPlantsHtml = additionalData.top_plants.map((plant, index) => 
+                        `<div class="day-stats-item">
+                            <span>${index + 1}. ${plant.name}</span>
+                            <strong>${plant.count} шт.</strong>
+                        </div>`
+                    ).join('');
+                    document.getElementById('top-plants-list').innerHTML = topPlantsHtml || '<p style="padding: 10px; text-align: center;">Нет данных</p>';
+                }
+
+                // Загружаем retention метрики
+                const retentionResponse = await fetch('/api/stats/retention');
+                if (retentionResponse.ok) {
+                    const retentionData = await retentionResponse.json();
+                    
+                    retentionData.retention.forEach(item => {
+                        const days = item.days;
+                        document.getElementById(`retention-${days}-cohort`).textContent = item.cohort_size;
+                        document.getElementById(`retention-${days}-returned`).textContent = item.returned;
+                        document.getElementById(`retention-${days}-percent`).textContent = `${item.retention_percent}%`;
+                    });
+                }
 
                 // Загружаем данные для графиков
                 await loadCharts();
@@ -494,4 +630,3 @@
     </script>
 </body>
 </html>
-```
