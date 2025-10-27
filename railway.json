@@ -60,15 +60,3 @@ dashboard.log
 Thumbs.db
 ```
 
----
-
-## 📂 Структура папок:
-```
-bloom-dashboard/
-├── dashboard.py
-├── static/
-│   └── index.html
-├── requirements.txt
-├── Procfile
-├── railway.json
-└── .gitignore
