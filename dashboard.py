@@ -122,33 +122,43 @@ async def get_today_stats():
             # Новые пользователи за сегодня
             new_users_today = await conn.fetchval("""
                 SELECT COUNT(*) FROM users 
-                WHERE DATE(created_at) = $1
+                WHERE created_at::date = $1
             """, today)
             
             # Пользователи которые полили сегодня
             watered_today = await conn.fetchval("""
-                SELECT COUNT(DISTINCT user_id) FROM care_history 
+                SELECT COUNT(DISTINCT plant_id) FROM care_history 
                 WHERE action_type = 'watered' 
-                AND DATE(action_date) = $1
+                AND action_date::date = $1
+            """, today)
+            
+            # Количество уникальных пользователей которые полили
+            users_watered_today = await conn.fetchval("""
+                SELECT COUNT(DISTINCT p.user_id) 
+                FROM care_history ch
+                JOIN plants p ON ch.plant_id = p.id
+                WHERE ch.action_type = 'watered' 
+                AND ch.action_date::date = $1
             """, today)
             
             # Пользователи которые добавили растение сегодня
             added_plants_today = await conn.fetchval("""
                 SELECT COUNT(DISTINCT user_id) FROM plants 
-                WHERE DATE(saved_date) = $1
+                WHERE saved_date::date = $1
             """, today)
             
             # Активные пользователи сегодня (last_activity)
             active_today = await conn.fetchval("""
                 SELECT COUNT(*) FROM users 
-                WHERE DATE(last_activity) = $1
+                WHERE last_activity IS NOT NULL 
+                AND last_activity::date = $1
             """, today)
             
             # Неактивные пользователи сегодня
             inactive_today = total_users - active_today if active_today else total_users
             
             # Проценты
-            watered_percent = round((watered_today / total_users * 100), 1) if total_users > 0 else 0
+            watered_percent = round((users_watered_today / total_users * 100), 1) if total_users > 0 else 0
             added_plants_percent = round((added_plants_today / total_users * 100), 1) if total_users > 0 else 0
             active_percent = round((active_today / total_users * 100), 1) if total_users > 0 else 0
             inactive_percent = round((inactive_today / total_users * 100), 1) if total_users > 0 else 0
@@ -158,7 +168,7 @@ async def get_today_stats():
                 "total_users": total_users,
                 "new_users": new_users_today,
                 "watered": {
-                    "count": watered_today,
+                    "count": users_watered_today,
                     "percent": watered_percent
                 },
                 "added_plants": {
@@ -191,32 +201,35 @@ async def get_yesterday_stats():
             # Общее количество пользователей на вчера
             total_users = await conn.fetchval("""
                 SELECT COUNT(*) FROM users 
-                WHERE DATE(created_at) <= $1
+                WHERE created_at::date <= $1
             """, yesterday)
             
             # Новые пользователи вчера
             new_users = await conn.fetchval("""
                 SELECT COUNT(*) FROM users 
-                WHERE DATE(created_at) = $1
+                WHERE created_at::date = $1
             """, yesterday)
             
             # Пользователи которые полили вчера
             watered = await conn.fetchval("""
-                SELECT COUNT(DISTINCT user_id) FROM care_history 
-                WHERE action_type = 'watered' 
-                AND DATE(action_date) = $1
+                SELECT COUNT(DISTINCT p.user_id) 
+                FROM care_history ch
+                JOIN plants p ON ch.plant_id = p.id
+                WHERE ch.action_type = 'watered' 
+                AND ch.action_date::date = $1
             """, yesterday)
             
             # Пользователи которые добавили растение вчера
             added_plants = await conn.fetchval("""
                 SELECT COUNT(DISTINCT user_id) FROM plants 
-                WHERE DATE(saved_date) = $1
+                WHERE saved_date::date = $1
             """, yesterday)
             
             # Активные пользователи вчера
             active = await conn.fetchval("""
                 SELECT COUNT(*) FROM users 
-                WHERE DATE(last_activity) = $1
+                WHERE last_activity IS NOT NULL
+                AND last_activity::date = $1
             """, yesterday)
             
             inactive = total_users - active if active else total_users
@@ -267,23 +280,28 @@ async def get_week_stats():
                 
                 # Новые пользователи
                 new_users = await conn.fetchval("""
-                    SELECT COUNT(*) FROM users WHERE DATE(created_at) = $1
+                    SELECT COUNT(*) FROM users WHERE created_at::date = $1
                 """, day)
                 
                 # Поливы
                 watered = await conn.fetchval("""
-                    SELECT COUNT(DISTINCT user_id) FROM care_history 
-                    WHERE action_type = 'watered' AND DATE(action_date) = $1
+                    SELECT COUNT(DISTINCT p.user_id) 
+                    FROM care_history ch
+                    JOIN plants p ON ch.plant_id = p.id
+                    WHERE ch.action_type = 'watered' 
+                    AND ch.action_date::date = $1
                 """, day)
                 
                 # Добавленные растения
                 added_plants = await conn.fetchval("""
-                    SELECT COUNT(DISTINCT user_id) FROM plants WHERE DATE(saved_date) = $1
+                    SELECT COUNT(DISTINCT user_id) FROM plants WHERE saved_date::date = $1
                 """, day)
                 
                 # Активные
                 active = await conn.fetchval("""
-                    SELECT COUNT(*) FROM users WHERE DATE(last_activity) = $1
+                    SELECT COUNT(*) FROM users 
+                    WHERE last_activity IS NOT NULL 
+                    AND last_activity::date = $1
                 """, day)
                 
                 days.append({
@@ -314,23 +332,28 @@ async def get_month_stats():
                 
                 # Новые пользователи
                 new_users = await conn.fetchval("""
-                    SELECT COUNT(*) FROM users WHERE DATE(created_at) = $1
+                    SELECT COUNT(*) FROM users WHERE created_at::date = $1
                 """, day)
                 
                 # Поливы
                 watered = await conn.fetchval("""
-                    SELECT COUNT(DISTINCT user_id) FROM care_history 
-                    WHERE action_type = 'watered' AND DATE(action_date) = $1
+                    SELECT COUNT(DISTINCT p.user_id) 
+                    FROM care_history ch
+                    JOIN plants p ON ch.plant_id = p.id
+                    WHERE ch.action_type = 'watered' 
+                    AND ch.action_date::date = $1
                 """, day)
                 
                 # Добавленные растения
                 added_plants = await conn.fetchval("""
-                    SELECT COUNT(DISTINCT user_id) FROM plants WHERE DATE(saved_date) = $1
+                    SELECT COUNT(DISTINCT user_id) FROM plants WHERE saved_date::date = $1
                 """, day)
                 
                 # Активные
                 active = await conn.fetchval("""
-                    SELECT COUNT(*) FROM users WHERE DATE(last_activity) = $1
+                    SELECT COUNT(*) FROM users 
+                    WHERE last_activity IS NOT NULL 
+                    AND last_activity::date = $1
                 """, day)
                 
                 days.append({
