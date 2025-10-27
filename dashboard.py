@@ -14,7 +14,47 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Bloom AI Dashboard")
 
 # Database URL из переменной окружения
-DATABASE_URL = os.getenv("DATABASE_URL")
+def get_database_url():
+    """Получить корректный DATABASE_URL"""
+    # Пробуем разные варианты переменных Railway
+    database_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_PRIVATE_URL")
+    
+    if not database_url:
+        # Пробуем собрать из отдельных переменных
+        pg_host = os.getenv("PGHOST")
+        pg_port = os.getenv("PGPORT", "5432")
+        pg_user = os.getenv("PGUSER", "postgres")
+        pg_password = os.getenv("PGPASSWORD")
+        pg_database = os.getenv("PGDATABASE", "railway")
+        
+        if pg_host and pg_password:
+            database_url = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_database}"
+            logger.info("✅ DATABASE_URL собран из отдельных переменных")
+        else:
+            logger.error("❌ Не найдены переменные для подключения к БД")
+            return None
+    
+    # Очистка URL от лишних префиксов Railway
+    if database_url:
+        # Убираем префикс railway если есть
+        if database_url.startswith("railway"):
+            database_url = database_url[7:]  # убираем "railway"
+        
+        # Убираем двойной слеш если появился
+        if database_url.startswith("//"):
+            database_url = database_url[2:]
+        
+        # Добавляем правильный префикс если его нет
+        if not database_url.startswith("postgresql://"):
+            database_url = "postgresql://" + database_url
+        
+        # Логируем (без пароля)
+        safe_url = database_url.split('@')[0].split(':')[0:2]
+        logger.info(f"🔗 Подключение к БД: {safe_url[0]}://***@...")
+    
+    return database_url
+
+DATABASE_URL = get_database_url()
 
 # Database pool
 db_pool = None
@@ -22,7 +62,13 @@ db_pool = None
 async def init_db():
     """Инициализация пула подключений"""
     global db_pool
+    
+    if not DATABASE_URL:
+        logger.error("❌ DATABASE_URL не установлен! Проверьте переменные окружения.")
+        return False
+    
     try:
+        logger.info(f"🔌 Подключаюсь к БД...")
         db_pool = await asyncpg.create_pool(
             DATABASE_URL,
             min_size=1,
@@ -33,6 +79,7 @@ async def init_db():
         return True
     except Exception as e:
         logger.error(f"❌ Ошибка подключения к БД: {e}")
+        logger.error(f"💡 Проверьте переменные: DATABASE_URL, DATABASE_PRIVATE_URL или PGHOST, PGPASSWORD")
         return False
 
 @app.on_event("startup")
@@ -56,7 +103,7 @@ async def shutdown():
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Главная страница"""
-    html_path = Path("static/index.html")
+    html_path = Path("/home/claude/static/index.html")
     if html_path.exists():
         return FileResponse(html_path)
     return HTMLResponse("<h1>Dashboard</h1><p>Loading...</p>")
