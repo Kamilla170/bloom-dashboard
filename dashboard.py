@@ -384,6 +384,154 @@ async def health_check():
         "timestamp": datetime.now().isoformat()
     }
 
+@app.get("/api/stats/additional")
+async def get_additional_stats():
+    """Дополнительные метрики"""
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+    
+    try:
+        async with db_pool.acquire() as conn:
+            today = datetime.now().date()
+            week_ago = today - timedelta(days=7)
+            
+            # Вопросы
+            questions_today = await conn.fetchval("""
+                SELECT COUNT(*) FROM plant_qa_history 
+                WHERE question_date::date = $1
+            """, today)
+            
+            questions_week = await conn.fetchval("""
+                SELECT COUNT(*) FROM plant_qa_history 
+                WHERE question_date::date >= $1
+            """, week_ago)
+            
+            # Feedback
+            feedback_today = await conn.fetchval("""
+                SELECT COUNT(*) FROM feedback 
+                WHERE created_at::date = $1
+            """, today)
+            
+            feedback_week = await conn.fetchval("""
+                SELECT COUNT(*) FROM feedback 
+                WHERE created_at::date >= $1
+            """, week_ago)
+            
+            # Выращивание
+            growing_active = await conn.fetchval("""
+                SELECT COUNT(*) FROM growing_plants 
+                WHERE status = 'active'
+            """)
+            
+            growing_completed = await conn.fetchval("""
+                SELECT COUNT(*) FROM growing_plants 
+                WHERE status = 'completed'
+            """)
+            
+            # Всего растений
+            total_plants = await conn.fetchval("""
+                SELECT COUNT(*) FROM plants
+            """)
+            
+            total_users = await conn.fetchval("""
+                SELECT COUNT(*) FROM users
+            """)
+            
+            avg_plants_per_user = round(total_plants / total_users, 1) if total_users > 0 else 0
+            
+            # Топ-5 растений
+            top_plants = await conn.fetch("""
+                SELECT plant_name, COUNT(*) as count
+                FROM plants
+                WHERE plant_name IS NOT NULL 
+                AND plant_name != ''
+                AND NOT plant_name ILIKE '%неизвестн%'
+                AND NOT plant_name ILIKE '%неопознан%'
+                GROUP BY plant_name
+                ORDER BY count DESC
+                LIMIT 5
+            """)
+            
+            return {
+                "questions": {
+                    "today": questions_today or 0,
+                    "week": questions_week or 0
+                },
+                "feedback": {
+                    "today": feedback_today or 0,
+                    "week": feedback_week or 0
+                },
+                "growing": {
+                    "active": growing_active or 0,
+                    "completed": growing_completed or 0,
+                    "total": (growing_active or 0) + (growing_completed or 0)
+                },
+                "plants": {
+                    "total": total_plants or 0,
+                    "avg_per_user": avg_plants_per_user
+                },
+                "top_plants": [
+                    {"name": row["plant_name"], "count": row["count"]}
+                    for row in top_plants
+                ]
+            }
+    except Exception as e:
+        logger.error(f"Ошибка получения дополнительных метрик: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stats/retention")
+async def get_retention_stats():
+    """Retention метрики - вернулись через 1/7/30 дней"""
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+    
+    try:
+        async with db_pool.acquire() as conn:
+            retention_data = []
+            
+            for days in [1, 7, 30]:
+                # Дата регистрации (N дней назад)
+                cohort_date = (datetime.now() - timedelta(days=days)).date()
+                
+                # Сколько зарегистрировалось в тот день
+                cohort_users = await conn.fetchval("""
+                    SELECT COUNT(*) FROM users 
+                    WHERE created_at::date = $1
+                """, cohort_date)
+                
+                if cohort_users == 0:
+                    retention_data.append({
+                        "days": days,
+                        "cohort_date": cohort_date.isoformat(),
+                        "cohort_size": 0,
+                        "returned": 0,
+                        "retention_percent": 0
+                    })
+                    continue
+                
+                # Сколько из них вернулись (имеют last_activity после created_at)
+                returned_users = await conn.fetchval("""
+                    SELECT COUNT(*) FROM users 
+                    WHERE created_at::date = $1
+                    AND last_activity IS NOT NULL
+                    AND last_activity::date > created_at::date
+                """, cohort_date)
+                
+                retention_percent = round((returned_users / cohort_users * 100), 1) if cohort_users > 0 else 0
+                
+                retention_data.append({
+                    "days": days,
+                    "cohort_date": cohort_date.isoformat(),
+                    "cohort_size": cohort_users,
+                    "returned": returned_users or 0,
+                    "retention_percent": retention_percent
+                })
+            
+            return {"retention": retention_data}
+    except Exception as e:
+        logger.error(f"Ошибка получения retention метрик: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     logger.info("=" * 70)
