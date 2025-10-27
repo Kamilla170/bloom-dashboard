@@ -15,11 +15,15 @@ app = FastAPI(title="Bloom AI Dashboard")
 
 # Database URL из переменной окружения
 def get_database_url():
-    """Получить корректный DATABASE_URL"""
-    # Пробуем разные варианты переменных Railway
-    database_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_PRIVATE_URL")
+    """Получить корректный DATABASE_URL с агрессивной очисткой"""
+    import re
     
-    if not database_url:
+    # Пробуем разные варианты переменных Railway
+    raw_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_PRIVATE_URL")
+    
+    logger.info(f"📋 Сырой DATABASE_URL найден: {bool(raw_url)}")
+    
+    if not raw_url:
         # Пробуем собрать из отдельных переменных
         pg_host = os.getenv("PGHOST")
         pg_port = os.getenv("PGPORT", "5432")
@@ -30,29 +34,52 @@ def get_database_url():
         if pg_host and pg_password:
             database_url = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_database}"
             logger.info("✅ DATABASE_URL собран из отдельных переменных")
+            return database_url
         else:
             logger.error("❌ Не найдены переменные для подключения к БД")
             return None
     
-    # Очистка URL от лишних префиксов Railway
-    if database_url:
-        # Убираем префикс railway если есть
-        if database_url.startswith("railway"):
-            database_url = database_url[7:]  # убираем "railway"
-        
-        # Убираем двойной слеш если появился
-        if database_url.startswith("//"):
-            database_url = database_url[2:]
-        
-        # Добавляем правильный префикс если его нет
-        if not database_url.startswith("postgresql://"):
-            database_url = "postgresql://" + database_url
-        
-        # Логируем (без пароля)
-        safe_url = database_url.split('@')[0].split(':')[0:2]
-        logger.info(f"🔗 Подключение к БД: {safe_url[0]}://***@...")
+    # Агрессивная очистка URL
+    cleaned_url = raw_url
     
-    return database_url
+    # Логируем исходный формат (первые 30 символов)
+    logger.info(f"🔍 Исходный формат: {cleaned_url[:50]}...")
+    
+    # Удаляем все варианты неправильных префиксов
+    prefixes_to_remove = [
+        "railwaypostgresql://",
+        "railway://",
+        "railway",
+    ]
+    
+    for prefix in prefixes_to_remove:
+        if cleaned_url.startswith(prefix):
+            cleaned_url = cleaned_url[len(prefix):]
+            logger.info(f"🧹 Удалён префикс: {prefix}")
+    
+    # Убираем лишние слеши в начале
+    cleaned_url = cleaned_url.lstrip('/')
+    
+    # Если URL не начинается с postgresql://, добавляем
+    if not cleaned_url.startswith("postgresql://"):
+        cleaned_url = "postgresql://" + cleaned_url
+        logger.info("➕ Добавлен префикс postgresql://")
+    
+    # Проверяем формат итогового URL
+    # Должен быть: postgresql://user:password@host:port/database
+    url_pattern = r'^postgresql://[^:]+:[^@]+@[^:]+:\d+/\w+$'
+    
+    if re.match(url_pattern, cleaned_url):
+        # Логируем безопасную версию (скрываем пароль)
+        safe_parts = cleaned_url.split('@')
+        if len(safe_parts) == 2:
+            user_part = safe_parts[0].split('://')[1].split(':')[0]
+            host_part = safe_parts[1]
+            logger.info(f"✅ URL очищен: postgresql://{user_part}:***@{host_part}")
+    else:
+        logger.warning(f"⚠️ URL может быть некорректным: {cleaned_url[:30]}...")
+    
+    return cleaned_url
 
 DATABASE_URL = get_database_url()
 
