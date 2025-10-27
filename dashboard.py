@@ -101,10 +101,15 @@ async def shutdown():
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Главная страница"""
-    html_path = Path("/home/claude/static/index.html")
+    # Получаем путь относительно текущего файла
+    current_dir = Path(__file__).parent
+    html_path = current_dir / "static" / "index.html"
+    
     if html_path.exists():
         return FileResponse(html_path)
-    return HTMLResponse("<h1>Dashboard</h1><p>Loading...</p>")
+    else:
+        logger.error(f"❌ Файл не найден: {html_path}")
+        return HTMLResponse("<h1>Dashboard</h1><p>Error: index.html not found</p>")
 
 @app.get("/api/stats/today")
 async def get_today_stats():
