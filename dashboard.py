@@ -62,6 +62,34 @@ async def init_db():
     global db_pool
     
     if not DATABASE_URL:
+    
+    # ПРИОРИТЕТ 2: Пробуем DATABASE_PRIVATE_URL
+    private_url = os.getenv("DATABASE_PRIVATE_URL")
+    if private_url:
+        logger.info("✅ Использую DATABASE_PRIVATE_URL")
+        return private_url
+    
+    # ПРИОРИТЕТ 3: Последняя попытка с DATABASE_URL
+    public_url = os.getenv("DATABASE_URL")
+    if public_url:
+        logger.info("⚠️ Использую DATABASE_URL (может быть некорректным)")
+        logger.info(f"🔍 Первые 50 символов: {public_url[:50]}...")
+        return public_url
+    
+    logger.error("❌ Не найдены переменные для подключения к БД")
+    logger.error("💡 Установите переменные: PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE")
+    return None
+
+DATABASE_URL = get_database_url()
+
+# Database pool
+db_pool = None
+
+async def init_db():
+    """Инициализация пула подключений"""
+    global db_pool
+    
+    if not DATABASE_URL:
         logger.error("❌ DATABASE_URL не установлен! Проверьте переменные окружения.")
         return False
     
