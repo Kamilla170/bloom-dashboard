@@ -2,7 +2,7 @@ import asyncio
 import asyncpg
 import os
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import logging
@@ -480,54 +480,118 @@ async def get_additional_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/stats/retention")
-async def get_retention_stats():
-    """Retention метрики - вернулись через 1/7/30 дней"""
+async def get_retention_stats(
+    retention_type: str = Query("classic", regex="^(classic|functional|rolling)$"),
+    days: int = Query(7, ge=1, le=30)
+):
+    """
+    Гибкий расчет retention метрик
+    
+    Параметры:
+    - retention_type: тип retention
+      * classic - любая активность (last_activity на день N)
+      * functional - полезные действия (полив/добавление/вопрос на день N)
+      * rolling - вернулся хоть раз за N дней после регистрации
+    - days: количество дней для измерения (1-30)
+    """
     if not db_pool:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     try:
         async with db_pool.acquire() as conn:
-            retention_data = []
+            cohorts = []
             
-            for days in [1, 7, 30]:
-                # Дата регистрации (N дней назад)
-                cohort_date = (datetime.now() - timedelta(days=days)).date()
+            # Анализируем последние 30 дней (можно настроить)
+            for i in range(30):
+                cohort_date = (datetime.now() - timedelta(days=i + days)).date()
+                target_date = cohort_date + timedelta(days=days)
                 
-                # Сколько зарегистрировалось в тот день
-                cohort_users = await conn.fetchval("""
+                # Сколько зарегистрировалось в cohort_date
+                cohort_size = await conn.fetchval("""
                     SELECT COUNT(*) FROM users 
                     WHERE created_at::date = $1
                 """, cohort_date)
                 
-                if cohort_users == 0:
-                    retention_data.append({
-                        "days": days,
-                        "cohort_date": cohort_date.isoformat(),
-                        "cohort_size": 0,
-                        "returned": 0,
-                        "retention_percent": 0
-                    })
+                if cohort_size == 0:
                     continue
                 
-                # Сколько из них вернулись (имеют last_activity после created_at)
-                returned_users = await conn.fetchval("""
-                    SELECT COUNT(*) FROM users 
-                    WHERE created_at::date = $1
-                    AND last_activity IS NOT NULL
-                    AND last_activity::date > created_at::date
-                """, cohort_date)
+                returned = 0
                 
-                retention_percent = round((returned_users / cohort_users * 100), 1) if cohort_users > 0 else 0
+                if retention_type == "classic":
+                    # Classic retention - любая активность на день N
+                    returned = await conn.fetchval("""
+                        SELECT COUNT(*) FROM users 
+                        WHERE created_at::date = $1
+                        AND last_activity IS NOT NULL
+                        AND last_activity::date = $2
+                    """, cohort_date, target_date)
                 
-                retention_data.append({
-                    "days": days,
+                elif retention_type == "functional":
+                    # Functional retention - полезные действия на день N
+                    # Полив или добавление растения
+                    watered_users = await conn.fetch("""
+                        SELECT DISTINCT p.user_id
+                        FROM care_history ch
+                        JOIN plants p ON ch.plant_id = p.id
+                        JOIN users u ON p.user_id = u.user_id
+                        WHERE u.created_at::date = $1
+                        AND ch.action_type = 'watered'
+                        AND ch.action_date::date = $2
+                    """, cohort_date, target_date)
+                    
+                    added_plant_users = await conn.fetch("""
+                        SELECT DISTINCT p.user_id
+                        FROM plants p
+                        JOIN users u ON p.user_id = u.user_id
+                        WHERE u.created_at::date = $1
+                        AND p.saved_date::date = $2
+                    """, cohort_date, target_date)
+                    
+                    asked_question_users = await conn.fetch("""
+                        SELECT DISTINCT qa.user_id
+                        FROM plant_qa_history qa
+                        JOIN users u ON qa.user_id = u.user_id
+                        WHERE u.created_at::date = $1
+                        AND qa.question_date::date = $2
+                    """, cohort_date, target_date)
+                    
+                    # Объединяем уникальных пользователей
+                    functional_users = set()
+                    functional_users.update(row['user_id'] for row in watered_users)
+                    functional_users.update(row['user_id'] for row in added_plant_users)
+                    functional_users.update(row['user_id'] for row in asked_question_users)
+                    
+                    returned = len(functional_users)
+                
+                elif retention_type == "rolling":
+                    # Rolling retention - вернулся хоть раз за N дней
+                    start_date = cohort_date + timedelta(days=1)
+                    end_date = cohort_date + timedelta(days=days)
+                    
+                    returned = await conn.fetchval("""
+                        SELECT COUNT(*) FROM users 
+                        WHERE created_at::date = $1
+                        AND last_activity IS NOT NULL
+                        AND last_activity::date >= $2
+                        AND last_activity::date <= $3
+                    """, cohort_date, start_date, end_date)
+                
+                retention_percent = round((returned / cohort_size * 100), 1) if cohort_size > 0 else 0
+                
+                cohorts.append({
                     "cohort_date": cohort_date.isoformat(),
-                    "cohort_size": cohort_users,
-                    "returned": returned_users or 0,
+                    "target_date": target_date.isoformat(),
+                    "registered": cohort_size,
+                    "returned": returned or 0,
                     "retention_percent": retention_percent
                 })
             
-            return {"retention": retention_data}
+            return {
+                "retention_type": retention_type,
+                "days": days,
+                "cohorts": cohorts
+            }
+    
     except Exception as e:
         logger.error(f"Ошибка получения retention метрик: {e}")
         raise HTTPException(status_code=500, detail=str(e))
