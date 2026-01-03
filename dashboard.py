@@ -736,6 +736,179 @@ async def get_retention_monthly_stats(
         logger.error(f"Ошибка получения monthly retention метрик: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/stats/timeseries")
+async def get_timeseries_stats(
+    granularity: str = Query("day", regex="^(day|week|month)$"),
+    date_from: str = Query(...),
+    date_to: str = Query(...)
+):
+    """
+    Гибкая статистика с выбором периода и гранулярности
+    
+    Параметры:
+    - granularity: гранулярность данных (day, week, month)
+    - date_from: начальная дата (YYYY-MM-DD)
+    - date_to: конечная дата (YYYY-MM-DD)
+    """
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+    
+    try:
+        from_date = datetime.strptime(date_from, "%Y-%m-%d").date()
+        to_date = datetime.strptime(date_to, "%Y-%m-%d").date()
+        
+        if from_date > to_date:
+            raise HTTPException(status_code=400, detail="date_from must be before date_to")
+        
+        async with db_pool.acquire() as conn:
+            data_points = []
+            
+            if granularity == "day":
+                # По дням
+                current_date = from_date
+                while current_date <= to_date:
+                    # Новые пользователи
+                    new_users = await conn.fetchval("""
+                        SELECT COUNT(*) FROM users WHERE created_at::date = $1
+                    """, current_date)
+                    
+                    # Поливы
+                    watered = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT p.user_id) 
+                        FROM care_history ch
+                        JOIN plants p ON ch.plant_id = p.id
+                        WHERE ch.action_type = 'watered' 
+                        AND ch.action_date::date = $1
+                    """, current_date)
+                    
+                    # Добавленные растения
+                    added_plants = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM plants WHERE saved_date::date = $1
+                    """, current_date)
+                    
+                    # Активные
+                    active = await conn.fetchval("""
+                        SELECT COUNT(*) FROM users 
+                        WHERE last_activity IS NOT NULL 
+                        AND last_activity::date = $1
+                    """, current_date)
+                    
+                    data_points.append({
+                        "date": current_date.isoformat(),
+                        "label": current_date.strftime("%d.%m"),
+                        "new_users": new_users or 0,
+                        "watered": watered or 0,
+                        "added_plants": added_plants or 0,
+                        "active": active or 0
+                    })
+                    
+                    current_date += timedelta(days=1)
+            
+            elif granularity == "week":
+                # По неделям
+                current_date = from_date
+                while current_date <= to_date:
+                    week_end = min(current_date + timedelta(days=6), to_date)
+                    
+                    # Новые пользователи за неделю
+                    new_users = await conn.fetchval("""
+                        SELECT COUNT(*) FROM users 
+                        WHERE created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, week_end)
+                    
+                    # Поливы за неделю
+                    watered = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT p.user_id) 
+                        FROM care_history ch
+                        JOIN plants p ON ch.plant_id = p.id
+                        WHERE ch.action_type = 'watered' 
+                        AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
+                    """, current_date, week_end)
+                    
+                    # Добавленные растения за неделю
+                    added_plants = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM plants 
+                        WHERE saved_date::date >= $1 AND saved_date::date <= $2
+                    """, current_date, week_end)
+                    
+                    # Уникальные активные за неделю
+                    active = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM users 
+                        WHERE last_activity IS NOT NULL 
+                        AND last_activity::date >= $1 AND last_activity::date <= $2
+                    """, current_date, week_end)
+                    
+                    data_points.append({
+                        "date": current_date.isoformat(),
+                        "label": f"{current_date.strftime('%d.%m')}-{week_end.strftime('%d.%m')}",
+                        "new_users": new_users or 0,
+                        "watered": watered or 0,
+                        "added_plants": added_plants or 0,
+                        "active": active or 0
+                    })
+                    
+                    current_date += timedelta(days=7)
+            
+            elif granularity == "month":
+                # По месяцам
+                current_date = from_date.replace(day=1)
+                while current_date <= to_date:
+                    month_end = (current_date + relativedelta(months=1) - timedelta(days=1))
+                    if month_end > to_date:
+                        month_end = to_date
+                    
+                    # Новые пользователи за месяц
+                    new_users = await conn.fetchval("""
+                        SELECT COUNT(*) FROM users 
+                        WHERE created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, month_end)
+                    
+                    # Поливы за месяц
+                    watered = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT p.user_id) 
+                        FROM care_history ch
+                        JOIN plants p ON ch.plant_id = p.id
+                        WHERE ch.action_type = 'watered' 
+                        AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
+                    """, current_date, month_end)
+                    
+                    # Добавленные растения за месяц
+                    added_plants = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM plants 
+                        WHERE saved_date::date >= $1 AND saved_date::date <= $2
+                    """, current_date, month_end)
+                    
+                    # Уникальные активные за месяц
+                    active = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM users 
+                        WHERE last_activity IS NOT NULL 
+                        AND last_activity::date >= $1 AND last_activity::date <= $2
+                    """, current_date, month_end)
+                    
+                    data_points.append({
+                        "date": current_date.isoformat(),
+                        "label": current_date.strftime("%b %Y"),
+                        "new_users": new_users or 0,
+                        "watered": watered or 0,
+                        "added_plants": added_plants or 0,
+                        "active": active or 0
+                    })
+                    
+                    current_date += relativedelta(months=1)
+            
+            return {
+                "granularity": granularity,
+                "date_from": date_from,
+                "date_to": date_to,
+                "data": data_points
+            }
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка получения timeseries данных: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     logger.info("=" * 70)
