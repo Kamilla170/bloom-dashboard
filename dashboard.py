@@ -711,7 +711,7 @@ async def get_timeseries_stats(
                         SELECT COUNT(*) FROM users WHERE created_at::date = $1
                     """, current_date)
                     
-                    # Поливы
+                    # Поливы (уникальные пользователи)
                     watered = await conn.fetchval("""
                         SELECT COUNT(DISTINCT p.user_id) 
                         FROM care_history ch
@@ -720,13 +720,28 @@ async def get_timeseries_stats(
                         AND ch.action_date::date = $1
                     """, current_date)
                     
-                    # Добавленные растения
+                    # Добавили растения
                     added_plants = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM plants WHERE saved_date::date = $1
                     """, current_date)
                     
-                    # Активные
-                    active = await conn.fetchval("""
+                    # Добавили рост с нуля
+                    added_growing = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM growing_plants WHERE created_at::date = $1
+                    """, current_date) or 0
+                    
+                    # Задали вопрос
+                    asked_question = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM plant_qa_history WHERE question_date::date = $1
+                    """, current_date) or 0
+                    
+                    # Оставили отзыв
+                    left_feedback = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM feedback WHERE created_at::date = $1
+                    """, current_date) or 0
+                    
+                    # Открыли бота (last_activity)
+                    opened_bot = await conn.fetchval("""
                         SELECT COUNT(*) FROM users 
                         WHERE last_activity IS NOT NULL 
                         AND last_activity::date = $1
@@ -738,7 +753,10 @@ async def get_timeseries_stats(
                         "new_users": new_users or 0,
                         "watered": watered or 0,
                         "added_plants": added_plants or 0,
-                        "active": active or 0
+                        "added_growing": added_growing,
+                        "asked_question": asked_question,
+                        "left_feedback": left_feedback,
+                        "opened_bot": opened_bot or 0
                     })
                     
                     current_date += timedelta(days=1)
@@ -764,14 +782,32 @@ async def get_timeseries_stats(
                         AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
                     """, current_date, week_end)
                     
-                    # Добавленные растения за неделю
+                    # Добавили растения за неделю
                     added_plants = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM plants 
                         WHERE saved_date::date >= $1 AND saved_date::date <= $2
                     """, current_date, week_end)
                     
-                    # Уникальные активные за неделю
-                    active = await conn.fetchval("""
+                    # Добавили рост с нуля за неделю
+                    added_growing = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM growing_plants 
+                        WHERE created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, week_end) or 0
+                    
+                    # Задали вопрос за неделю
+                    asked_question = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM plant_qa_history 
+                        WHERE question_date::date >= $1 AND question_date::date <= $2
+                    """, current_date, week_end) or 0
+                    
+                    # Оставили отзыв за неделю
+                    left_feedback = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM feedback 
+                        WHERE created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, week_end) or 0
+                    
+                    # Открыли бота за неделю (уникальные)
+                    opened_bot = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM users 
                         WHERE last_activity IS NOT NULL 
                         AND last_activity::date >= $1 AND last_activity::date <= $2
@@ -783,7 +819,10 @@ async def get_timeseries_stats(
                         "new_users": new_users or 0,
                         "watered": watered or 0,
                         "added_plants": added_plants or 0,
-                        "active": active or 0
+                        "added_growing": added_growing,
+                        "asked_question": asked_question,
+                        "left_feedback": left_feedback,
+                        "opened_bot": opened_bot or 0
                     })
                     
                     current_date += timedelta(days=7)
@@ -811,14 +850,32 @@ async def get_timeseries_stats(
                         AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
                     """, current_date, month_end)
                     
-                    # Добавленные растения за месяц
+                    # Добавили растения за месяц
                     added_plants = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM plants 
                         WHERE saved_date::date >= $1 AND saved_date::date <= $2
                     """, current_date, month_end)
                     
-                    # Уникальные активные за месяц
-                    active = await conn.fetchval("""
+                    # Добавили рост с нуля за месяц
+                    added_growing = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM growing_plants 
+                        WHERE created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, month_end) or 0
+                    
+                    # Задали вопрос за месяц
+                    asked_question = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM plant_qa_history 
+                        WHERE question_date::date >= $1 AND question_date::date <= $2
+                    """, current_date, month_end) or 0
+                    
+                    # Оставили отзыв за месяц
+                    left_feedback = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM feedback 
+                        WHERE created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, month_end) or 0
+                    
+                    # Открыли бота за месяц (уникальные)
+                    opened_bot = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM users 
                         WHERE last_activity IS NOT NULL 
                         AND last_activity::date >= $1 AND last_activity::date <= $2
@@ -830,7 +887,10 @@ async def get_timeseries_stats(
                         "new_users": new_users or 0,
                         "watered": watered or 0,
                         "added_plants": added_plants or 0,
-                        "active": active or 0
+                        "added_growing": added_growing,
+                        "asked_question": asked_question,
+                        "left_feedback": left_feedback,
+                        "opened_bot": opened_bot or 0
                     })
                     
                     current_date += relativedelta(months=1)
