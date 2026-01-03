@@ -726,19 +726,28 @@ async def get_timeseries_stats(
                     """, current_date)
                     
                     # Добавили рост с нуля
-                    added_growing = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM growing_plants WHERE created_at::date = $1
-                    """, current_date) or 0
+                    try:
+                        added_growing = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT user_id) FROM growing_plants WHERE created_at::date = $1
+                        """, current_date) or 0
+                    except Exception:
+                        added_growing = 0
                     
                     # Задали вопрос
-                    asked_question = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM plant_qa_history WHERE question_date::date = $1
-                    """, current_date) or 0
+                    try:
+                        asked_question = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT user_id) FROM plant_qa_history WHERE question_date::date = $1
+                        """, current_date) or 0
+                    except Exception:
+                        asked_question = 0
                     
                     # Оставили отзыв
-                    left_feedback = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM feedback WHERE created_at::date = $1
-                    """, current_date) or 0
+                    try:
+                        left_feedback = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT user_id) FROM feedback WHERE created_at::date = $1
+                        """, current_date) or 0
+                    except Exception:
+                        left_feedback = 0
                     
                     # Открыли бота (last_activity)
                     opened_bot = await conn.fetchval("""
@@ -789,22 +798,31 @@ async def get_timeseries_stats(
                     """, current_date, week_end)
                     
                     # Добавили рост с нуля за неделю
-                    added_growing = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM growing_plants 
-                        WHERE created_at::date >= $1 AND created_at::date <= $2
-                    """, current_date, week_end) or 0
+                    try:
+                        added_growing = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT user_id) FROM growing_plants 
+                            WHERE created_at::date >= $1 AND created_at::date <= $2
+                        """, current_date, week_end) or 0
+                    except Exception:
+                        added_growing = 0
                     
                     # Задали вопрос за неделю
-                    asked_question = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM plant_qa_history 
-                        WHERE question_date::date >= $1 AND question_date::date <= $2
-                    """, current_date, week_end) or 0
+                    try:
+                        asked_question = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT user_id) FROM plant_qa_history 
+                            WHERE question_date::date >= $1 AND question_date::date <= $2
+                        """, current_date, week_end) or 0
+                    except Exception:
+                        asked_question = 0
                     
                     # Оставили отзыв за неделю
-                    left_feedback = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM feedback 
-                        WHERE created_at::date >= $1 AND created_at::date <= $2
-                    """, current_date, week_end) or 0
+                    try:
+                        left_feedback = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT user_id) FROM feedback 
+                            WHERE created_at::date >= $1 AND created_at::date <= $2
+                        """, current_date, week_end) or 0
+                    except Exception:
+                        left_feedback = 0
                     
                     # Открыли бота за неделю (уникальные)
                     opened_bot = await conn.fetchval("""
@@ -857,22 +875,31 @@ async def get_timeseries_stats(
                     """, current_date, month_end)
                     
                     # Добавили рост с нуля за месяц
-                    added_growing = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM growing_plants 
-                        WHERE created_at::date >= $1 AND created_at::date <= $2
-                    """, current_date, month_end) or 0
+                    try:
+                        added_growing = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT user_id) FROM growing_plants 
+                            WHERE created_at::date >= $1 AND created_at::date <= $2
+                        """, current_date, month_end) or 0
+                    except Exception:
+                        added_growing = 0
                     
                     # Задали вопрос за месяц
-                    asked_question = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM plant_qa_history 
-                        WHERE question_date::date >= $1 AND question_date::date <= $2
-                    """, current_date, month_end) or 0
+                    try:
+                        asked_question = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT user_id) FROM plant_qa_history 
+                            WHERE question_date::date >= $1 AND question_date::date <= $2
+                        """, current_date, month_end) or 0
+                    except Exception:
+                        asked_question = 0
                     
                     # Оставили отзыв за месяц
-                    left_feedback = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM feedback 
-                        WHERE created_at::date >= $1 AND created_at::date <= $2
-                    """, current_date, month_end) or 0
+                    try:
+                        left_feedback = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT user_id) FROM feedback 
+                            WHERE created_at::date >= $1 AND created_at::date <= $2
+                        """, current_date, month_end) or 0
+                    except Exception:
+                        left_feedback = 0
                     
                     # Открыли бота за месяц (уникальные)
                     opened_bot = await conn.fetchval("""
