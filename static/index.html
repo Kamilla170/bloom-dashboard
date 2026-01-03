@@ -398,9 +398,12 @@
                     labels: data.data.map(d => d.label),
                     datasets: [
                         { label: 'Новые пользователи', data: data.data.map(d => d.new_users), borderColor: '#667eea', backgroundColor: 'rgba(102, 126, 234, 0.1)', tension: 0.4 },
-                        { label: 'Полили растения', data: data.data.map(d => d.watered), borderColor: '#4caf50', backgroundColor: 'rgba(76, 175, 80, 0.1)', tension: 0.4 },
-                        { label: 'Добавили растения', data: data.data.map(d => d.added_plants), borderColor: '#ff9800', backgroundColor: 'rgba(255, 152, 0, 0.1)', tension: 0.4 },
-                        { label: 'Активные пользователи', data: data.data.map(d => d.active), borderColor: '#2196F3', backgroundColor: 'rgba(33, 150, 243, 0.1)', tension: 0.4 }
+                        { label: 'Поливы', data: data.data.map(d => d.watered), borderColor: '#4caf50', backgroundColor: 'rgba(76, 175, 80, 0.1)', tension: 0.4 },
+                        { label: 'Добавили растение', data: data.data.map(d => d.added_plants), borderColor: '#ff9800', backgroundColor: 'rgba(255, 152, 0, 0.1)', tension: 0.4 },
+                        { label: 'Добавили рост с нуля', data: data.data.map(d => d.added_growing), borderColor: '#9c27b0', backgroundColor: 'rgba(156, 39, 176, 0.1)', tension: 0.4 },
+                        { label: 'Задали вопрос', data: data.data.map(d => d.asked_question), borderColor: '#e91e63', backgroundColor: 'rgba(233, 30, 99, 0.1)', tension: 0.4 },
+                        { label: 'Оставили отзыв', data: data.data.map(d => d.left_feedback), borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.1)', tension: 0.4 },
+                        { label: 'Открыли бота', data: data.data.map(d => d.opened_bot), borderColor: '#2196F3', backgroundColor: 'rgba(33, 150, 243, 0.1)', tension: 0.4 }
                     ]
                 },
                 options: {
