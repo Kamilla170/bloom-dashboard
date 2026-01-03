@@ -725,12 +725,14 @@ async def get_timeseries_stats(
                         SELECT COUNT(DISTINCT user_id) FROM plants WHERE saved_date::date = $1
                     """, current_date)
                     
-                    # Добавили рост с нуля
+                    # Добавили рост с нуля (по дате начала выращивания)
                     try:
                         added_growing = await conn.fetchval("""
-                            SELECT COUNT(DISTINCT user_id) FROM growing_plants WHERE created_at::date = $1
+                            SELECT COUNT(DISTINCT user_id) FROM growing_plants 
+                            WHERE started_date::date = $1
                         """, current_date) or 0
-                    except Exception:
+                    except Exception as e:
+                        logger.error(f"Ошибка подсчета growing: {e}")
                         added_growing = 0
                     
                     # Задали вопрос
@@ -801,9 +803,10 @@ async def get_timeseries_stats(
                     try:
                         added_growing = await conn.fetchval("""
                             SELECT COUNT(DISTINCT user_id) FROM growing_plants 
-                            WHERE created_at::date >= $1 AND created_at::date <= $2
+                            WHERE started_date::date >= $1 AND started_date::date <= $2
                         """, current_date, week_end) or 0
-                    except Exception:
+                    except Exception as e:
+                        logger.error(f"Ошибка подсчета growing (week): {e}")
                         added_growing = 0
                     
                     # Задали вопрос за неделю
@@ -878,9 +881,10 @@ async def get_timeseries_stats(
                     try:
                         added_growing = await conn.fetchval("""
                             SELECT COUNT(DISTINCT user_id) FROM growing_plants 
-                            WHERE created_at::date >= $1 AND created_at::date <= $2
+                            WHERE started_date::date >= $1 AND started_date::date <= $2
                         """, current_date, month_end) or 0
-                    except Exception:
+                    except Exception as e:
+                        logger.error(f"Ошибка подсчета growing (month): {e}")
                         added_growing = 0
                     
                     # Задали вопрос за месяц
