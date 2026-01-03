@@ -186,6 +186,81 @@
             color: white;
         }
 
+        /* Timeseries controls */
+        .timeseries-controls {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-label {
+            font-weight: bold;
+            color: #667eea;
+            min-width: 120px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .control-btn {
+            padding: 10px 20px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .control-btn:hover {
+            background: #f0f0f0;
+        }
+
+        .control-btn.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .date-input {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .date-input:focus {
+            border-color: #667eea;
+        }
+
+        .custom-period-inputs {
+            display: none;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .custom-period-inputs.active {
+            display: flex;
+        }
+
         /* Retention controls */
         .retention-controls {
             background: #f8f9fa;
@@ -345,12 +420,17 @@
                 grid-template-columns: 1fr;
             }
 
-            .retention-type-buttons {
+            .control-row {
                 flex-direction: column;
+                align-items: flex-start;
             }
 
-            .retention-type-btn {
+            .button-group {
                 width: 100%;
+            }
+
+            .control-btn {
+                flex: 1;
             }
         }
 
@@ -508,6 +588,62 @@
                 </div>
             </div>
 
+            <!-- Динамика активности с гибким выбором периода -->
+            <div class="charts-section">
+                <h2>📈 Динамика активности пользователей</h2>
+                
+                <!-- Управление -->
+                <div class="timeseries-controls">
+                    <div class="control-row">
+                        <span class="control-label">📊 Гранулярность:</span>
+                        <div class="button-group">
+                            <button class="control-btn active" data-granularity="day">
+                                📅 День
+                            </button>
+                            <button class="control-btn" data-granularity="week">
+                                📊 Неделя
+                            </button>
+                            <button class="control-btn" data-granularity="month">
+                                📆 Месяц
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="control-row">
+                        <span class="control-label">⏱️ Период:</span>
+                        <div class="button-group">
+                            <button class="control-btn active" data-period="7d">
+                                Last 7 days
+                            </button>
+                            <button class="control-btn" data-period="30d">
+                                Last 30 days
+                            </button>
+                            <button class="control-btn" data-period="3m">
+                                Last 3 months
+                            </button>
+                            <button class="control-btn" data-period="custom">
+                                Custom
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="control-row custom-period-inputs">
+                        <span class="control-label">📅 Даты:</span>
+                        <input type="date" class="date-input" id="date-from" />
+                        <span>→</span>
+                        <input type="date" class="date-input" id="date-to" />
+                        <button class="control-btn" id="apply-custom-period">
+                            Применить
+                        </button>
+                    </div>
+                </div>
+
+                <!-- График -->
+                <div class="chart-container">
+                    <canvas id="timeseriesChart"></canvas>
+                </div>
+            </div>
+
             <!-- Retention метрики ПО ДНЯМ -->
             <div class="charts-section">
                 <h2>👥 Retention Analysis (по дням) - Возвращаемость пользователей</h2>
@@ -635,25 +771,15 @@
                     <canvas id="retentionMonthlyChart"></canvas>
                 </div>
             </div>
-
-            <!-- Графики -->
-            <div class="charts-section">
-                <h2>📈 Динамика за последние 7 дней</h2>
-                <div class="chart-container">
-                    <canvas id="weekChart"></canvas>
-                </div>
-            </div>
-
-            <div class="charts-section">
-                <h2>📈 Динамика за последние 30 дней</h2>
-                <div class="chart-container">
-                    <canvas id="monthChart"></canvas>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
+        // State variables
+        let currentGranularity = 'day';
+        let currentPeriod = '7d';
+        let customDateFrom = null;
+        let customDateTo = null;
         let currentRetentionType = 'classic';
         let currentRetentionDays = 7;
         let currentRetentionMonthlyType = 'classic';
@@ -695,19 +821,51 @@
             return 'retention-low';
         }
 
+        function calculatePeriodDates(period) {
+            const today = new Date();
+            let from, to;
+
+            switch(period) {
+                case '7d':
+                    from = new Date(today);
+                    from.setDate(from.getDate() - 7);
+                    to = today;
+                    break;
+                case '30d':
+                    from = new Date(today);
+                    from.setDate(from.getDate() - 30);
+                    to = today;
+                    break;
+                case '3m':
+                    from = new Date(today);
+                    from.setMonth(from.getMonth() - 3);
+                    to = today;
+                    break;
+                case 'custom':
+                    if (!customDateFrom || !customDateTo) return null;
+                    from = new Date(customDateFrom);
+                    to = new Date(customDateTo);
+                    break;
+                default:
+                    return null;
+            }
+
+            return {
+                from: from.toISOString().split('T')[0],
+                to: to.toISOString().split('T')[0]
+            };
+        }
+
         async function loadStats() {
             try {
-                // Загружаем статистику за сегодня
                 const todayResponse = await fetch('/api/stats/today');
                 if (!todayResponse.ok) throw new Error('Ошибка загрузки данных за сегодня');
                 const todayData = await todayResponse.json();
 
-                // Загружаем статистику за вчера
                 const yesterdayResponse = await fetch('/api/stats/yesterday');
                 if (!yesterdayResponse.ok) throw new Error('Ошибка загрузки данных за вчера');
                 const yesterdayData = await yesterdayResponse.json();
 
-                // Обновляем основные показатели
                 document.getElementById('total-users').textContent = todayData.total_users;
                 document.getElementById('new-users-today').textContent = `+${todayData.new_users}`;
                 
@@ -723,7 +881,6 @@
                 document.getElementById('inactive-count').textContent = todayData.inactive.count;
                 document.getElementById('inactive-percent').textContent = `${todayData.inactive.percent}% от базы`;
 
-                // Обновляем сравнение
                 document.getElementById('today-date').textContent = formatDate(todayData.date);
                 document.getElementById('today-new').textContent = todayData.new_users;
                 document.getElementById('today-watered').textContent = `${todayData.watered.count} (${todayData.watered.percent}%)`;
@@ -736,7 +893,6 @@
                 document.getElementById('yesterday-added').textContent = `${yesterdayData.added_plants.count} (${yesterdayData.added_plants.percent}%)`;
                 document.getElementById('yesterday-active').textContent = `${yesterdayData.active.count} (${yesterdayData.active.percent}%)`;
 
-                // Загружаем дополнительные метрики
                 const additionalResponse = await fetch('/api/stats/additional');
                 if (additionalResponse.ok) {
                     const additionalData = await additionalResponse.json();
@@ -753,7 +909,6 @@
                     document.getElementById('total-plants').textContent = additionalData.plants.total;
                     document.getElementById('avg-plants').textContent = additionalData.plants.avg_per_user;
                     
-                    // Топ-5 растений
                     const topPlantsHtml = additionalData.top_plants.map((plant, index) => 
                         `<div class="day-stats-item">
                             <span>${index + 1}. ${plant.name}</span>
@@ -763,18 +918,13 @@
                     document.getElementById('top-plants-list').innerHTML = topPlantsHtml || '<p style="padding: 10px; text-align: center;">Нет данных</p>';
                 }
 
-                // Загружаем retention метрики
+                await loadTimeseriesData();
                 await loadRetentionData();
                 await loadRetentionMonthlyData();
 
-                // Загружаем данные для графиков
-                await loadCharts();
-
-                // Скрываем loading, показываем stats
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('today-stats').style.display = 'block';
 
-                // Обновляем время
                 const now = new Date();
                 document.getElementById('updateTime').textContent = now.toLocaleString('ru-RU');
 
@@ -785,6 +935,92 @@
             }
         }
 
+        async function loadTimeseriesData() {
+            try {
+                const dates = calculatePeriodDates(currentPeriod);
+                if (!dates) return;
+
+                const response = await fetch(`/api/stats/timeseries?granularity=${currentGranularity}&date_from=${dates.from}&date_to=${dates.to}`);
+                if (!response.ok) throw new Error('Ошибка загрузки timeseries данных');
+                
+                const data = await response.json();
+                updateTimeseriesChart(data);
+
+            } catch (error) {
+                console.error('Ошибка загрузки timeseries:', error);
+            }
+        }
+
+        function updateTimeseriesChart(data) {
+            const canvas = document.getElementById('timeseriesChart');
+            const existingChart = Chart.getChart('timeseriesChart');
+            if (existingChart) {
+                existingChart.destroy();
+            }
+
+            if (!data.data || data.data.length === 0) {
+                return;
+            }
+
+            const ctx = canvas.getContext('2d');
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.data.map(d => d.label),
+                    datasets: [
+                        {
+                            label: 'Новые пользователи',
+                            data: data.data.map(d => d.new_users),
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Полили растения',
+                            data: data.data.map(d => d.watered),
+                            borderColor: '#4caf50',
+                            backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Добавили растения',
+                            data: data.data.map(d => d.added_plants),
+                            borderColor: '#ff9800',
+                            backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Активные пользователи',
+                            data: data.data.map(d => d.active),
+                            borderColor: '#2196F3',
+                            backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom'
+                        },
+                        title: {
+                            display: true,
+                            text: `Активность (${data.granularity === 'day' ? 'по дням' : data.granularity === 'week' ? 'по неделям' : 'по месяцам'})`
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
         async function loadRetentionData() {
             try {
                 const response = await fetch(`/api/stats/retention?retention_type=${currentRetentionType}&days=${currentRetentionDays}`);
@@ -792,14 +1028,12 @@
                 
                 const data = await response.json();
                 
-                // Обновляем информацию о типе retention
                 const info = retentionDescriptions[data.retention_type];
                 document.getElementById('retention-info').innerHTML = `
                     <h4>${info.title}</h4>
                     <p>${info.description}</p>
                 `;
 
-                // Обновляем таблицу
                 const tbody = document.getElementById('retention-table-body');
                 if (data.cohorts && data.cohorts.length > 0) {
                     tbody.innerHTML = data.cohorts.map(cohort => {
@@ -818,7 +1052,6 @@
                     tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">Нет данных</td></tr>';
                 }
 
-                // Обновляем график
                 updateRetentionChart(data);
 
             } catch (error) {
@@ -833,14 +1066,12 @@
                 
                 const data = await response.json();
                 
-                // Обновляем информацию о типе retention
                 const info = retentionDescriptions[data.retention_type];
                 document.getElementById('retention-monthly-info').innerHTML = `
                     <h4>${info.title} (Monthly)</h4>
                     <p>${info.description}</p>
                 `;
 
-                // Обновляем таблицу
                 const tbody = document.getElementById('retention-monthly-table-body');
                 if (data.cohorts && data.cohorts.length > 0) {
                     tbody.innerHTML = data.cohorts.map(cohort => {
@@ -859,7 +1090,6 @@
                     tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">Нет данных</td></tr>';
                 }
 
-                // Обновляем график
                 updateRetentionMonthlyChart(data);
 
             } catch (error) {
@@ -869,8 +1099,6 @@
 
         function updateRetentionChart(data) {
             const canvas = document.getElementById('retentionChart');
-            
-            // ИСПРАВЛЕНИЕ: Правильно уничтожаем старый график
             const existingChart = Chart.getChart('retentionChart');
             if (existingChart) {
                 existingChart.destroy();
@@ -926,8 +1154,6 @@
 
         function updateRetentionMonthlyChart(data) {
             const canvas = document.getElementById('retentionMonthlyChart');
-            
-            // ИСПРАВЛЕНИЕ: Правильно уничтожаем старый график
             const existingChart = Chart.getChart('retentionMonthlyChart');
             if (existingChart) {
                 existingChart.destroy();
@@ -981,88 +1207,43 @@
             });
         }
 
-        async function loadCharts() {
-            try {
-                const weekResponse = await fetch('/api/stats/week');
-                const weekData = await weekResponse.json();
+        // Event handlers для timeseries controls
+        document.querySelectorAll('[data-granularity]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('[data-granularity]').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentGranularity = this.dataset.granularity;
+                loadTimeseriesData();
+            });
+        });
 
-                const monthResponse = await fetch('/api/stats/month');
-                const monthData = await monthResponse.json();
-
-                createChart('weekChart', weekData.days);
-                createChart('monthChart', monthData.days);
-
-            } catch (error) {
-                console.error('Ошибка загрузки графиков:', error);
-            }
-        }
-
-        function createChart(canvasId, data) {
-            const canvas = document.getElementById(canvasId);
-            
-            // ИСПРАВЛЕНИЕ: Правильно уничтожаем старый график
-            const existingChart = Chart.getChart(canvasId);
-            if (existingChart) {
-                existingChart.destroy();
-            }
-
-            const ctx = canvas.getContext('2d');
-            const labels = data.map(d => formatDate(d.date));
-            
-            new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'Новые пользователи',
-                            data: data.map(d => d.new_users),
-                            borderColor: '#667eea',
-                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Полили растения',
-                            data: data.map(d => d.watered),
-                            borderColor: '#4caf50',
-                            backgroundColor: 'rgba(76, 175, 80, 0.1)',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Добавили растения',
-                            data: data.map(d => d.added_plants),
-                            borderColor: '#ff9800',
-                            backgroundColor: 'rgba(255, 152, 0, 0.1)',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Активные пользователи',
-                            data: data.map(d => d.active),
-                            borderColor: '#2196F3',
-                            backgroundColor: 'rgba(33, 150, 243, 0.1)',
-                            tension: 0.4
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true,
-                            position: 'bottom'
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true
-                        }
-                    }
+        document.querySelectorAll('[data-period]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentPeriod = this.dataset.period;
+                
+                if (currentPeriod === 'custom') {
+                    document.querySelector('.custom-period-inputs').classList.add('active');
+                } else {
+                    document.querySelector('.custom-period-inputs').classList.remove('active');
+                    loadTimeseriesData();
                 }
             });
-        }
+        });
 
-        // Обработчики событий для daily retention controls
+        document.getElementById('apply-custom-period').addEventListener('click', function() {
+            customDateFrom = document.getElementById('date-from').value;
+            customDateTo = document.getElementById('date-to').value;
+            
+            if (customDateFrom && customDateTo) {
+                loadTimeseriesData();
+            } else {
+                alert('Пожалуйста, выберите обе даты');
+            }
+        });
+
+        // Event handlers для retention controls
         document.querySelectorAll('.retention-type-btn[data-period="daily"]').forEach(btn => {
             btn.addEventListener('click', function() {
                 document.querySelectorAll('.retention-type-btn[data-period="daily"]').forEach(b => b.classList.remove('active'));
@@ -1072,7 +1253,6 @@
             });
         });
 
-        // Обработчики событий для monthly retention controls
         document.querySelectorAll('.retention-type-btn[data-period="monthly"]').forEach(btn => {
             btn.addEventListener('click', function() {
                 document.querySelectorAll('.retention-type-btn[data-period="monthly"]').forEach(b => b.classList.remove('active'));
@@ -1100,10 +1280,8 @@
             loadRetentionMonthlyData();
         });
 
-        // Загрузка при старте (вызывается только один раз)
+        // Initialize
         loadStats();
-
-        // Автообновление каждые 30 секунд
         setInterval(loadStats, 30000);
     </script>
 </body>
