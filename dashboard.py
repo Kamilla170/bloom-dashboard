@@ -529,6 +529,19 @@ async def get_actions_per_user_stats(
                         AND last_activity::date = $1
                     """, current_date) or 0
                     
+                    # Среднее количество растений на пользователя (накопительная метрика - не зависит от активности)
+                    users_with_plants = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM plants
+                        WHERE saved_date::date <= $1
+                    """, current_date) or 0
+                    
+                    total_plants_count = await conn.fetchval("""
+                        SELECT COUNT(*) FROM plants
+                        WHERE saved_date::date <= $1
+                    """, current_date) or 0
+                    
+                    plants_per_user = round(total_plants_count / users_with_plants, 2) if users_with_plants > 0 else 0
+                    
                     if active_users == 0:
                         data_points.append({
                             "date": current_date.isoformat(),
@@ -538,7 +551,7 @@ async def get_actions_per_user_stats(
                             "added_growing_per_user": 0,
                             "asked_question_per_user": 0,
                             "left_feedback_per_user": 0,
-                            "plants_per_user": 0,
+                            "plants_per_user": plants_per_user,  # Накопительная метрика всегда считается
                             "active_users": 0
                         })
                         current_date += timedelta(days=1)
@@ -621,6 +634,19 @@ async def get_actions_per_user_stats(
                         AND last_activity::date >= $1 AND last_activity::date <= $2
                     """, current_date, week_end) or 0
                     
+                    # Среднее количество растений на пользователя (накопительная метрика)
+                    users_with_plants = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM plants
+                        WHERE saved_date::date <= $1
+                    """, week_end) or 0
+                    
+                    total_plants_count = await conn.fetchval("""
+                        SELECT COUNT(*) FROM plants
+                        WHERE saved_date::date <= $1
+                    """, week_end) or 0
+                    
+                    plants_per_user = round(total_plants_count / users_with_plants, 2) if users_with_plants > 0 else 0
+                    
                     if active_users == 0:
                         data_points.append({
                             "date": current_date.isoformat(),
@@ -630,7 +656,7 @@ async def get_actions_per_user_stats(
                             "added_growing_per_user": 0,
                             "asked_question_per_user": 0,
                             "left_feedback_per_user": 0,
-                            "plants_per_user": 0,
+                            "plants_per_user": plants_per_user,
                             "active_users": 0
                         })
                         current_date += timedelta(days=7)
@@ -711,6 +737,19 @@ async def get_actions_per_user_stats(
                         AND last_activity::date >= $1 AND last_activity::date <= $2
                     """, current_date, month_end) or 0
                     
+                    # Среднее количество растений на пользователя (накопительная метрика)
+                    users_with_plants = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM plants
+                        WHERE saved_date::date <= $1
+                    """, month_end) or 0
+                    
+                    total_plants_count = await conn.fetchval("""
+                        SELECT COUNT(*) FROM plants
+                        WHERE saved_date::date <= $1
+                    """, month_end) or 0
+                    
+                    plants_per_user = round(total_plants_count / users_with_plants, 2) if users_with_plants > 0 else 0
+                    
                     if active_users == 0:
                         data_points.append({
                             "date": current_date.isoformat(),
@@ -720,7 +759,7 @@ async def get_actions_per_user_stats(
                             "added_growing_per_user": 0,
                             "asked_question_per_user": 0,
                             "left_feedback_per_user": 0,
-                            "plants_per_user": 0,
+                            "plants_per_user": plants_per_user,
                             "active_users": 0
                         })
                         current_date += relativedelta(months=1)
