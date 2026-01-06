@@ -482,7 +482,8 @@
                         { label: 'Добавил растение', data: data.data.map(d => d.added_plants_per_user), borderColor: '#ff9800', backgroundColor: 'rgba(255, 152, 0, 0.1)', tension: 0.4 },
                         { label: 'Рост с нуля', data: data.data.map(d => d.added_growing_per_user), borderColor: '#9c27b0', backgroundColor: 'rgba(156, 39, 176, 0.1)', tension: 0.4 },
                         { label: 'Задал вопрос', data: data.data.map(d => d.asked_question_per_user), borderColor: '#e91e63', backgroundColor: 'rgba(233, 30, 99, 0.1)', tension: 0.4 },
-                        { label: 'Оставил отзыв', data: data.data.map(d => d.left_feedback_per_user), borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.1)', tension: 0.4 }
+                        { label: 'Оставил отзыв', data: data.data.map(d => d.left_feedback_per_user), borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.1)', tension: 0.4 },
+                        { label: 'Растений на пользователя', data: data.data.map(d => d.plants_per_user), borderColor: '#00bcd4', backgroundColor: 'rgba(0, 188, 212, 0.1)', tension: 0.4, borderWidth: 3 }
                     ]
                 },
                 options: {
