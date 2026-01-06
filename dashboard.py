@@ -490,6 +490,271 @@ async def get_additional_stats():
         logger.error(f"Ошибка получения дополнительных метрик: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/stats/actions-per-user")
+async def get_actions_per_user_stats(
+    granularity: str = Query("day", regex="^(day|week|month)$"),
+    date_from: str = Query(...),
+    date_to: str = Query(...)
+):
+    """
+    Статистика полезных действий на одного активного пользователя
+    
+    Параметры:
+    - granularity: гранулярность данных (day, week, month)
+    - date_from: начальная дата (YYYY-MM-DD)
+    - date_to: конечная дата (YYYY-MM-DD)
+    
+    Возвращает среднее количество действий на пользователя
+    """
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+    
+    try:
+        from_date = datetime.strptime(date_from, "%Y-%m-%d").date()
+        to_date = datetime.strptime(date_to, "%Y-%m-%d").date()
+        
+        if from_date > to_date:
+            raise HTTPException(status_code=400, detail="date_from must be before date_to")
+        
+        async with db_pool.acquire() as conn:
+            data_points = []
+            
+            if granularity == "day":
+                current_date = from_date
+                while current_date <= to_date:
+                    # Активные пользователи (база для расчета)
+                    active_users = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM users 
+                        WHERE last_activity IS NOT NULL 
+                        AND last_activity::date = $1
+                    """, current_date) or 0
+                    
+                    if active_users == 0:
+                        data_points.append({
+                            "date": current_date.isoformat(),
+                            "label": current_date.strftime("%d.%m"),
+                            "watered_per_user": 0,
+                            "added_plants_per_user": 0,
+                            "added_growing_per_user": 0,
+                            "asked_question_per_user": 0,
+                            "left_feedback_per_user": 0,
+                            "active_users": 0
+                        })
+                        current_date += timedelta(days=1)
+                        continue
+                    
+                    # Всего поливов (событий, не уникальных пользователей)
+                    total_watered = await conn.fetchval("""
+                        SELECT COUNT(*) FROM care_history ch
+                        WHERE ch.action_type = 'watered' 
+                        AND ch.action_date::date = $1
+                    """, current_date) or 0
+                    
+                    # Всего добавлено растений (событий)
+                    total_added_plants = await conn.fetchval("""
+                        SELECT COUNT(*) FROM plants WHERE saved_date::date = $1
+                    """, current_date) or 0
+                    
+                    # Всего добавлено растений "рост с нуля"
+                    try:
+                        total_added_growing = await conn.fetchval("""
+                            SELECT COUNT(*) FROM growing_plants 
+                            WHERE started_date::date = $1
+                        """, current_date) or 0
+                    except Exception:
+                        total_added_growing = 0
+                    
+                    # Всего задано вопросов
+                    try:
+                        total_asked_question = await conn.fetchval("""
+                            SELECT COUNT(*) FROM plant_qa_history WHERE question_date::date = $1
+                        """, current_date) or 0
+                    except Exception:
+                        total_asked_question = 0
+                    
+                    # Всего оставлено отзывов
+                    try:
+                        total_left_feedback = await conn.fetchval("""
+                            SELECT COUNT(*) FROM feedback WHERE created_at::date = $1
+                        """, current_date) or 0
+                    except Exception:
+                        total_left_feedback = 0
+                    
+                    data_points.append({
+                        "date": current_date.isoformat(),
+                        "label": current_date.strftime("%d.%m"),
+                        "watered_per_user": round(total_watered / active_users, 2),
+                        "added_plants_per_user": round(total_added_plants / active_users, 2),
+                        "added_growing_per_user": round(total_added_growing / active_users, 2),
+                        "asked_question_per_user": round(total_asked_question / active_users, 2),
+                        "left_feedback_per_user": round(total_left_feedback / active_users, 2),
+                        "active_users": active_users
+                    })
+                    
+                    current_date += timedelta(days=1)
+            
+            elif granularity == "week":
+                current_date = from_date
+                while current_date <= to_date:
+                    week_end = min(current_date + timedelta(days=6), to_date)
+                    
+                    active_users = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM users 
+                        WHERE last_activity IS NOT NULL 
+                        AND last_activity::date >= $1 AND last_activity::date <= $2
+                    """, current_date, week_end) or 0
+                    
+                    if active_users == 0:
+                        data_points.append({
+                            "date": current_date.isoformat(),
+                            "label": f"{current_date.strftime('%d.%m')}-{week_end.strftime('%d.%m')}",
+                            "watered_per_user": 0,
+                            "added_plants_per_user": 0,
+                            "added_growing_per_user": 0,
+                            "asked_question_per_user": 0,
+                            "left_feedback_per_user": 0,
+                            "active_users": 0
+                        })
+                        current_date += timedelta(days=7)
+                        continue
+                    
+                    total_watered = await conn.fetchval("""
+                        SELECT COUNT(*) FROM care_history ch
+                        WHERE ch.action_type = 'watered' 
+                        AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
+                    """, current_date, week_end) or 0
+                    
+                    total_added_plants = await conn.fetchval("""
+                        SELECT COUNT(*) FROM plants 
+                        WHERE saved_date::date >= $1 AND saved_date::date <= $2
+                    """, current_date, week_end) or 0
+                    
+                    try:
+                        total_added_growing = await conn.fetchval("""
+                            SELECT COUNT(*) FROM growing_plants 
+                            WHERE started_date::date >= $1 AND started_date::date <= $2
+                        """, current_date, week_end) or 0
+                    except Exception:
+                        total_added_growing = 0
+                    
+                    try:
+                        total_asked_question = await conn.fetchval("""
+                            SELECT COUNT(*) FROM plant_qa_history 
+                            WHERE question_date::date >= $1 AND question_date::date <= $2
+                        """, current_date, week_end) or 0
+                    except Exception:
+                        total_asked_question = 0
+                    
+                    try:
+                        total_left_feedback = await conn.fetchval("""
+                            SELECT COUNT(*) FROM feedback 
+                            WHERE created_at::date >= $1 AND created_at::date <= $2
+                        """, current_date, week_end) or 0
+                    except Exception:
+                        total_left_feedback = 0
+                    
+                    data_points.append({
+                        "date": current_date.isoformat(),
+                        "label": f"{current_date.strftime('%d.%m')}-{week_end.strftime('%d.%m')}",
+                        "watered_per_user": round(total_watered / active_users, 2),
+                        "added_plants_per_user": round(total_added_plants / active_users, 2),
+                        "added_growing_per_user": round(total_added_growing / active_users, 2),
+                        "asked_question_per_user": round(total_asked_question / active_users, 2),
+                        "left_feedback_per_user": round(total_left_feedback / active_users, 2),
+                        "active_users": active_users
+                    })
+                    
+                    current_date += timedelta(days=7)
+            
+            elif granularity == "month":
+                current_date = from_date.replace(day=1)
+                while current_date <= to_date:
+                    month_end = (current_date + relativedelta(months=1) - timedelta(days=1))
+                    if month_end > to_date:
+                        month_end = to_date
+                    
+                    active_users = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT user_id) FROM users 
+                        WHERE last_activity IS NOT NULL 
+                        AND last_activity::date >= $1 AND last_activity::date <= $2
+                    """, current_date, month_end) or 0
+                    
+                    if active_users == 0:
+                        data_points.append({
+                            "date": current_date.isoformat(),
+                            "label": current_date.strftime("%b %Y"),
+                            "watered_per_user": 0,
+                            "added_plants_per_user": 0,
+                            "added_growing_per_user": 0,
+                            "asked_question_per_user": 0,
+                            "left_feedback_per_user": 0,
+                            "active_users": 0
+                        })
+                        current_date += relativedelta(months=1)
+                        continue
+                    
+                    total_watered = await conn.fetchval("""
+                        SELECT COUNT(*) FROM care_history ch
+                        WHERE ch.action_type = 'watered' 
+                        AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
+                    """, current_date, month_end) or 0
+                    
+                    total_added_plants = await conn.fetchval("""
+                        SELECT COUNT(*) FROM plants 
+                        WHERE saved_date::date >= $1 AND saved_date::date <= $2
+                    """, current_date, month_end) or 0
+                    
+                    try:
+                        total_added_growing = await conn.fetchval("""
+                            SELECT COUNT(*) FROM growing_plants 
+                            WHERE started_date::date >= $1 AND started_date::date <= $2
+                        """, current_date, month_end) or 0
+                    except Exception:
+                        total_added_growing = 0
+                    
+                    try:
+                        total_asked_question = await conn.fetchval("""
+                            SELECT COUNT(*) FROM plant_qa_history 
+                            WHERE question_date::date >= $1 AND question_date::date <= $2
+                        """, current_date, month_end) or 0
+                    except Exception:
+                        total_asked_question = 0
+                    
+                    try:
+                        total_left_feedback = await conn.fetchval("""
+                            SELECT COUNT(*) FROM feedback 
+                            WHERE created_at::date >= $1 AND created_at::date <= $2
+                        """, current_date, month_end) or 0
+                    except Exception:
+                        total_left_feedback = 0
+                    
+                    data_points.append({
+                        "date": current_date.isoformat(),
+                        "label": current_date.strftime("%b %Y"),
+                        "watered_per_user": round(total_watered / active_users, 2),
+                        "added_plants_per_user": round(total_added_plants / active_users, 2),
+                        "added_growing_per_user": round(total_added_growing / active_users, 2),
+                        "asked_question_per_user": round(total_asked_question / active_users, 2),
+                        "left_feedback_per_user": round(total_left_feedback / active_users, 2),
+                        "active_users": active_users
+                    })
+                    
+                    current_date += relativedelta(months=1)
+            
+            return {
+                "granularity": granularity,
+                "date_from": date_from,
+                "date_to": date_to,
+                "data": data_points
+            }
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка получения actions-per-user данных: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/stats/retention-flexible")
 async def get_retention_flexible_stats(
     retention_type: str = Query("classic", regex="^(classic|functional|rolling)$"),
