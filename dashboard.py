@@ -581,23 +581,17 @@ async def get_actions_per_user_stats(
                     except Exception:
                         total_left_feedback = 0
                     
-                    # Среднее количество растений на пользователя (у кого есть хоть 1 растение)
+                    # Среднее количество растений на пользователя (накопительная метрика)
+                    # Считаем всех пользователей с хоть 1 растением на эту дату
                     users_with_plants = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM plants
-                        WHERE user_id IN (
-                            SELECT DISTINCT user_id FROM users 
-                            WHERE last_activity IS NOT NULL 
-                            AND last_activity::date <= $1
-                        )
+                        WHERE saved_date::date <= $1
                     """, current_date) or 0
                     
+                    # Считаем все растения добавленные до этой даты
                     total_plants_count = await conn.fetchval("""
                         SELECT COUNT(*) FROM plants
-                        WHERE user_id IN (
-                            SELECT DISTINCT user_id FROM users 
-                            WHERE last_activity IS NOT NULL 
-                            AND last_activity::date <= $1
-                        )
+                        WHERE saved_date::date <= $1
                     """, current_date) or 0
                     
                     plants_per_user = round(total_plants_count / users_with_plants, 2) if users_with_plants > 0 else 0
@@ -677,23 +671,15 @@ async def get_actions_per_user_stats(
                     except Exception:
                         total_left_feedback = 0
                     
-                    # Среднее количество растений на пользователя
+                    # Среднее количество растений на пользователя (накопительная метрика)
                     users_with_plants = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM plants
-                        WHERE user_id IN (
-                            SELECT DISTINCT user_id FROM users 
-                            WHERE last_activity IS NOT NULL 
-                            AND last_activity::date <= $1
-                        )
+                        WHERE saved_date::date <= $1
                     """, week_end) or 0
                     
                     total_plants_count = await conn.fetchval("""
                         SELECT COUNT(*) FROM plants
-                        WHERE user_id IN (
-                            SELECT DISTINCT user_id FROM users 
-                            WHERE last_activity IS NOT NULL 
-                            AND last_activity::date <= $1
-                        )
+                        WHERE saved_date::date <= $1
                     """, week_end) or 0
                     
                     plants_per_user = round(total_plants_count / users_with_plants, 2) if users_with_plants > 0 else 0
@@ -775,23 +761,15 @@ async def get_actions_per_user_stats(
                     except Exception:
                         total_left_feedback = 0
                     
-                    # Среднее количество растений на пользователя
+                    # Среднее количество растений на пользователя (накопительная метрика)
                     users_with_plants = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM plants
-                        WHERE user_id IN (
-                            SELECT DISTINCT user_id FROM users 
-                            WHERE last_activity IS NOT NULL 
-                            AND last_activity::date <= $1
-                        )
+                        WHERE saved_date::date <= $1
                     """, month_end) or 0
                     
                     total_plants_count = await conn.fetchval("""
                         SELECT COUNT(*) FROM plants
-                        WHERE user_id IN (
-                            SELECT DISTINCT user_id FROM users 
-                            WHERE last_activity IS NOT NULL 
-                            AND last_activity::date <= $1
-                        )
+                        WHERE saved_date::date <= $1
                     """, month_end) or 0
                     
                     plants_per_user = round(total_plants_count / users_with_plants, 2) if users_with_plants > 0 else 0
