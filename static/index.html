@@ -202,6 +202,37 @@
             </div>
 
             <div class="charts-section">
+                <h2>👤 Действия на пользователя</h2>
+                <div class="control-panel">
+                    <div class="control-row">
+                        <span class="control-label">📊 Гранулярность:</span>
+                        <div class="button-group">
+                            <button class="control-btn active" data-per-user-granularity="day">📅 День</button>
+                            <button class="control-btn" data-per-user-granularity="week">📊 Неделя</button>
+                            <button class="control-btn" data-per-user-granularity="month">📆 Месяц</button>
+                        </div>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">⏱️ Период:</span>
+                        <div class="button-group">
+                            <button class="control-btn active" data-per-user-period="7d">Last 7 days</button>
+                            <button class="control-btn" data-per-user-period="30d">Last 30 days</button>
+                            <button class="control-btn" data-per-user-period="3m">Last 3 months</button>
+                            <button class="control-btn" data-per-user-period="custom">Custom</button>
+                        </div>
+                    </div>
+                    <div class="control-row custom-period-inputs" id="per-user-custom-period">
+                        <span class="control-label">📅 Даты:</span>
+                        <input type="date" class="date-input" id="per-user-date-from" />
+                        <span>→</span>
+                        <input type="date" class="date-input" id="per-user-date-to" />
+                        <button class="control-btn" id="apply-per-user-custom-period">Применить</button>
+                    </div>
+                </div>
+                <div class="chart-container"><canvas id="actionsPerUserChart"></canvas></div>
+            </div>
+
+            <div class="charts-section">
                 <h2>👥 Retention Analysis - Возвращаемость пользователей</h2>
                 <div class="control-panel">
                     <div class="control-row">
@@ -270,6 +301,10 @@
         let currentPeriod = '7d';
         let customDateFrom = null;
         let customDateTo = null;
+        let currentPerUserGranularity = 'day';
+        let currentPerUserPeriod = '7d';
+        let customPerUserDateFrom = null;
+        let customPerUserDateTo = null;
         let currentRetentionType = 'classic';
         let currentRetentionGranularity = 'day';
         let currentRetentionPeriod = 7;
@@ -295,7 +330,7 @@
             return 'retention-low';
         }
 
-        function calculatePeriodDates(period) {
+        function calculatePeriodDates(period, customFrom = null, customTo = null) {
             const today = new Date();
             let from, to;
             switch(period) {
@@ -306,8 +341,8 @@
                 case '3m':
                     from = new Date(today); from.setMonth(from.getMonth() - 3); to = today; break;
                 case 'custom':
-                    if (!customDateFrom || !customDateTo) return null;
-                    from = new Date(customDateFrom); to = new Date(customDateTo); break;
+                    if (!customFrom || !customTo) return null;
+                    from = new Date(customFrom); to = new Date(customTo); break;
                 default: return null;
             }
             return { from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] };
@@ -361,6 +396,7 @@
                 }
 
                 await loadTimeseriesData();
+                await loadActionsPerUserData();
                 await loadRetentionData();
 
                 document.getElementById('loading').style.display = 'none';
@@ -375,7 +411,7 @@
 
         async function loadTimeseriesData() {
             try {
-                const dates = calculatePeriodDates(currentPeriod);
+                const dates = calculatePeriodDates(currentPeriod, customDateFrom, customDateTo);
                 if (!dates) return;
                 const response = await fetch(`/api/stats/timeseries?granularity=${currentGranularity}&date_from=${dates.from}&date_to=${dates.to}`);
                 if (!response.ok) throw new Error('Ошибка загрузки timeseries данных');
@@ -412,6 +448,49 @@
                     plugins: {
                         legend: { display: true, position: 'bottom' },
                         title: { display: true, text: `Активность (${data.granularity === 'day' ? 'по дням' : data.granularity === 'week' ? 'по неделям' : 'по месяцам'})` }
+                    },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        async function loadActionsPerUserData() {
+            try {
+                const dates = calculatePeriodDates(currentPerUserPeriod, customPerUserDateFrom, customPerUserDateTo);
+                if (!dates) return;
+                const response = await fetch(`/api/stats/actions-per-user?granularity=${currentPerUserGranularity}&date_from=${dates.from}&date_to=${dates.to}`);
+                if (!response.ok) throw new Error('Ошибка загрузки actions-per-user данных');
+                const data = await response.json();
+                updateActionsPerUserChart(data);
+            } catch (error) {
+                console.error('Ошибка загрузки actions-per-user:', error);
+            }
+        }
+
+        function updateActionsPerUserChart(data) {
+            const canvas = document.getElementById('actionsPerUserChart');
+            const existingChart = Chart.getChart('actionsPerUserChart');
+            if (existingChart) existingChart.destroy();
+            if (!data.data || data.data.length === 0) return;
+
+            new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: data.data.map(d => d.label),
+                    datasets: [
+                        { label: 'Поливы на пользователя', data: data.data.map(d => d.watered_per_user), borderColor: '#4caf50', backgroundColor: 'rgba(76, 175, 80, 0.1)', tension: 0.4 },
+                        { label: 'Добавил растение', data: data.data.map(d => d.added_plants_per_user), borderColor: '#ff9800', backgroundColor: 'rgba(255, 152, 0, 0.1)', tension: 0.4 },
+                        { label: 'Рост с нуля', data: data.data.map(d => d.added_growing_per_user), borderColor: '#9c27b0', backgroundColor: 'rgba(156, 39, 176, 0.1)', tension: 0.4 },
+                        { label: 'Задал вопрос', data: data.data.map(d => d.asked_question_per_user), borderColor: '#e91e63', backgroundColor: 'rgba(233, 30, 99, 0.1)', tension: 0.4 },
+                        { label: 'Оставил отзыв', data: data.data.map(d => d.left_feedback_per_user), borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.1)', tension: 0.4 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true, position: 'bottom' },
+                        title: { display: true, text: `Действия на пользователя (${data.granularity === 'day' ? 'по дням' : data.granularity === 'week' ? 'по неделям' : 'по месяцам'})` }
                     },
                     scales: { y: { beginAtZero: true } }
                 }
@@ -516,6 +595,41 @@
             customDateTo = document.getElementById('date-to').value;
             if (customDateFrom && customDateTo) {
                 loadTimeseriesData();
+            } else {
+                alert('Пожалуйста, выберите обе даты');
+            }
+        });
+
+        // Event handlers для Actions Per User
+        document.querySelectorAll('[data-per-user-granularity]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('[data-per-user-granularity]').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentPerUserGranularity = this.dataset.perUserGranularity;
+                loadActionsPerUserData();
+            });
+        });
+
+        document.querySelectorAll('[data-per-user-period]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('[data-per-user-period]').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentPerUserPeriod = this.dataset.perUserPeriod;
+                
+                if (currentPerUserPeriod === 'custom') {
+                    document.getElementById('per-user-custom-period').classList.add('active');
+                } else {
+                    document.getElementById('per-user-custom-period').classList.remove('active');
+                    loadActionsPerUserData();
+                }
+            });
+        });
+
+        document.getElementById('apply-per-user-custom-period').addEventListener('click', function() {
+            customPerUserDateFrom = document.getElementById('per-user-date-from').value;
+            customPerUserDateTo = document.getElementById('per-user-date-to').value;
+            if (customPerUserDateFrom && customPerUserDateTo) {
+                loadActionsPerUserData();
             } else {
                 alert('Пожалуйста, выберите обе даты');
             }
