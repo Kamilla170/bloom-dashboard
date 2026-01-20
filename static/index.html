@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🌱 Bloom AI Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-funnel@4.1.0/dist/chartjs-chart-funnel.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #333; padding: 20px; min-height: 100vh; }
@@ -29,6 +30,7 @@
         .charts-section { margin-top: 30px; background: white; border-radius: 15px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
         .charts-section h2 { margin-bottom: 20px; color: #667eea; }
         .chart-container { position: relative; height: 300px; margin-bottom: 30px; }
+        .funnel-container { position: relative; height: 400px; margin-bottom: 30px; }
         .loading { text-align: center; padding: 40px; color: white; font-size: 1.2rem; }
         .error { background: #ff4444; color: white; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px; }
         .badge { display: inline-block; padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
@@ -59,6 +61,14 @@
         .retention-high { color: #4caf50; }
         .retention-medium { color: #ff9800; }
         .retention-low { color: #f44336; }
+        .funnel-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .funnel-table th, .funnel-table td { padding: 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .funnel-table th { background: #f8f9fa; color: #667eea; font-weight: bold; }
+        .funnel-table tr:hover { background: #f8f9fa; }
+        .funnel-table input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; }
+        .funnel-table input:focus { outline: none; border-color: #667eea; }
+        .funnel-table .editable-row { background: #fff3cd; }
+        .funnel-table .editable-row:hover { background: #ffe69c; }
         @media (max-width: 768px) {
             header h1 { font-size: 1.8rem; }
             .stat-value { font-size: 2rem; }
@@ -167,6 +177,55 @@
                 <div class="day-stats" style="margin-top: 20px;">
                     <h3>🏆 Топ-5 популярных растений</h3>
                     <div id="top-plants-list"><div style="padding: 20px; text-align: center;">Загрузка...</div></div>
+                </div>
+            </div>
+
+            <div class="charts-section">
+                <h2>🎯 Воронка пользователей</h2>
+                <div class="control-panel">
+                    <div class="control-row">
+                        <span class="control-label">📊 Гранулярность:</span>
+                        <div class="button-group">
+                            <button class="control-btn active" data-funnel-granularity="day">📅 День</button>
+                            <button class="control-btn" data-funnel-granularity="week">📊 Неделя</button>
+                            <button class="control-btn" data-funnel-granularity="month">📆 Месяц</button>
+                        </div>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">⏱️ Период:</span>
+                        <div class="button-group">
+                            <button class="control-btn active" data-funnel-period="7d">Last 7 days</button>
+                            <button class="control-btn" data-funnel-period="30d">Last 30 days</button>
+                            <button class="control-btn" data-funnel-period="3m">Last 3 months</button>
+                            <button class="control-btn" data-funnel-period="custom">Custom</button>
+                        </div>
+                    </div>
+                    <div class="control-row custom-period-inputs" id="funnel-custom-period">
+                        <span class="control-label">📅 Даты:</span>
+                        <input type="date" class="date-input" id="funnel-date-from" />
+                        <span>→</span>
+                        <input type="date" class="date-input" id="funnel-date-to" />
+                        <button class="control-btn" id="apply-funnel-custom-period">Применить</button>
+                    </div>
+                </div>
+
+                <div class="funnel-container">
+                    <canvas id="funnelChart"></canvas>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table class="funnel-table">
+                        <thead>
+                            <tr>
+                                <th>Этап</th>
+                                <th>Значение</th>
+                                <th>Процент</th>
+                            </tr>
+                        </thead>
+                        <tbody id="funnel-table-body">
+                            <tr><td colspan="3" style="text-align: center; padding: 20px;">Загрузка...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -308,6 +367,10 @@
         let currentRetentionType = 'classic';
         let currentRetentionGranularity = 'day';
         let currentRetentionPeriod = 7;
+        let currentFunnelGranularity = 'day';
+        let currentFunnelPeriod = '7d';
+        let customFunnelDateFrom = null;
+        let customFunnelDateTo = null;
 
         const retentionDescriptions = {
             classic: { title: 'Classic Retention', description: 'Измеряет любую активность пользователя (last_activity) через N дней/недель/месяцев после регистрации' },
@@ -395,6 +458,7 @@
                     document.getElementById('top-plants-list').innerHTML = topPlantsHtml || '<p style="padding: 10px; text-align: center;">Нет данных</p>';
                 }
 
+                await loadFunnelData();
                 await loadTimeseriesData();
                 await loadActionsPerUserData();
                 await loadRetentionData();
@@ -407,6 +471,172 @@
                 showError(error.message);
                 document.getElementById('loading').style.display = 'none';
             }
+        }
+
+        async function loadFunnelData() {
+            try {
+                const dates = calculatePeriodDates(currentFunnelPeriod, customFunnelDateFrom, customFunnelDateTo);
+                if (!dates) return;
+                
+                const response = await fetch(`/api/stats/funnel?granularity=${currentFunnelGranularity}&date_from=${dates.from}&date_to=${dates.to}`);
+                if (!response.ok) throw new Error('Ошибка загрузки funnel данных');
+                const data = await response.json();
+                updateFunnelChart(data);
+                updateFunnelTable(data);
+            } catch (error) {
+                console.error('Ошибка загрузки funnel:', error);
+            }
+        }
+
+        function updateFunnelChart(data) {
+            const canvas = document.getElementById('funnelChart');
+            const existingChart = Chart.getChart('funnelChart');
+            if (existingChart) existingChart.destroy();
+            
+            if (!data.data || data.data.length === 0) return;
+
+            // Агрегируем данные за весь период
+            const aggregated = {
+                opened_bot: 0,
+                added_plant: 0,
+                watered: 0,
+                asked_question: 0,
+                active_14days: 0
+            };
+
+            data.data.forEach(point => {
+                aggregated.opened_bot += point.opened_bot.count;
+                aggregated.added_plant += point.added_plant.count;
+                aggregated.watered += point.watered.count;
+                aggregated.asked_question += point.asked_question.count;
+                aggregated.active_14days += point.active_14days.count;
+            });
+
+            const funnelData = [
+                aggregated.opened_bot,
+                aggregated.added_plant,
+                aggregated.watered,
+                aggregated.asked_question,
+                aggregated.active_14days
+            ];
+
+            const labels = [
+                'Открыли бота',
+                'Добавили растение',
+                'Полили растение',
+                'Задали вопрос AI',
+                'Активны в первые 14 дней'
+            ];
+
+            new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Количество пользователей',
+                        data: funnelData,
+                        backgroundColor: [
+                            'rgba(102, 126, 234, 0.8)',
+                            'rgba(76, 175, 80, 0.8)',
+                            'rgba(255, 152, 0, 0.8)',
+                            'rgba(233, 30, 99, 0.8)',
+                            'rgba(33, 150, 243, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgb(102, 126, 234)',
+                            'rgb(76, 175, 80)',
+                            'rgb(255, 152, 0)',
+                            'rgb(233, 30, 99)',
+                            'rgb(33, 150, 243)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        title: { 
+                            display: true, 
+                            text: `Воронка пользователей (${data.granularity === 'day' ? 'дни' : data.granularity === 'week' ? 'недели' : 'месяцы'}: ${data.date_from} - ${data.date_to})`,
+                            font: { size: 16 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.parsed.x;
+                                    const percent = aggregated.opened_bot > 0 ? ((value / aggregated.opened_bot) * 100).toFixed(1) : 0;
+                                    return `${value} чел. (${percent}%)`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateFunnelTable(data) {
+            if (!data.data || data.data.length === 0) return;
+
+            // Агрегируем данные за весь период
+            const aggregated = {
+                opened_bot: 0,
+                added_plant: 0,
+                watered: 0,
+                asked_question: 0,
+                active_14days: 0
+            };
+
+            data.data.forEach(point => {
+                aggregated.opened_bot += point.opened_bot.count;
+                aggregated.added_plant += point.added_plant.count;
+                aggregated.watered += point.watered.count;
+                aggregated.asked_question += point.asked_question.count;
+                aggregated.active_14days += point.active_14days.count;
+            });
+
+            const stages = [
+                { name: 'Открыли бота', count: aggregated.opened_bot },
+                { name: 'Добавили растение', count: aggregated.added_plant },
+                { name: 'Полили растение', count: aggregated.watered },
+                { name: 'Задали вопрос AI', count: aggregated.asked_question },
+                { name: 'Активны в первые 14 дней', count: aggregated.active_14days }
+            ];
+
+            const tbody = document.getElementById('funnel-table-body');
+            let html = '';
+
+            stages.forEach(stage => {
+                const percent = aggregated.opened_bot > 0 ? ((stage.count / aggregated.opened_bot) * 100).toFixed(1) : 0;
+                html += `<tr>
+                    <td><strong>${stage.name}</strong></td>
+                    <td>${stage.count.toLocaleString()}</td>
+                    <td>${percent}%</td>
+                </tr>`;
+            });
+
+            // Добавляем 3 пустые строки для расчетов
+            for (let i = 0; i < 3; i++) {
+                html += `<tr class="editable-row">
+                    <td><input type="text" placeholder="Название этапа" /></td>
+                    <td><input type="number" placeholder="0" /></td>
+                    <td><input type="number" placeholder="0" step="0.1" /></td>
+                </tr>`;
+            }
+
+            tbody.innerHTML = html;
         }
 
         async function loadTimeseriesData() {
@@ -566,6 +796,40 @@
                 }
             });
         }
+
+        // Event handlers для воронки
+        document.querySelectorAll('[data-funnel-granularity]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('[data-funnel-granularity]').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentFunnelGranularity = this.dataset.funnelGranularity;
+                loadFunnelData();
+            });
+        });
+
+        document.querySelectorAll('[data-funnel-period]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('[data-funnel-period]').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentFunnelPeriod = this.dataset.funnelPeriod;
+                if (currentFunnelPeriod === 'custom') {
+                    document.getElementById('funnel-custom-period').classList.add('active');
+                } else {
+                    document.getElementById('funnel-custom-period').classList.remove('active');
+                    loadFunnelData();
+                }
+            });
+        });
+
+        document.getElementById('apply-funnel-custom-period').addEventListener('click', function() {
+            customFunnelDateFrom = document.getElementById('funnel-date-from').value;
+            customFunnelDateTo = document.getElementById('funnel-date-to').value;
+            if (customFunnelDateFrom && customFunnelDateTo) {
+                loadFunnelData();
+            } else {
+                alert('Пожалуйста, выберите обе даты');
+            }
+        });
 
         // Event handlers
         document.querySelectorAll('[data-granularity]').forEach(btn => {
