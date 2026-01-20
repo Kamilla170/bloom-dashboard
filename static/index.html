@@ -69,6 +69,7 @@
         .funnel-table input:focus { outline: none; border-color: #667eea; }
         .funnel-table .editable-row { background: #fff3cd; }
         .funnel-table .editable-row:hover { background: #ffe69c; }
+        .funnel-value-input, .funnel-percent-input { font-weight: bold; text-align: center; }
         @media (max-width: 768px) {
             header h1 { font-size: 1.8rem; }
             .stat-value { font-size: 2rem; }
@@ -608,6 +609,14 @@
                 { key: 'active_14days', name: 'Активны 14 дней', count: aggregated.active_14days }
             ];
 
+            // Рассчитываем конверсии между этапами
+            const conversions = [];
+            for (let i = 1; i < stages.length - 1; i++) {
+                const prevCount = stages[i - 1].count;
+                const currentCount = stages[i].count;
+                conversions.push(prevCount > 0 ? currentCount / prevCount : 0);
+            }
+
             const tbody = document.getElementById('funnel-table-body');
             let html = '';
 
@@ -618,14 +627,14 @@
             });
             html += '</tr>';
 
-            // Строка со значениями
+            // Строка со значениями (текущие)
             html += '<tr><td><strong>Значение</strong></td>';
             stages.forEach(stage => {
                 html += `<td>${stage.count.toLocaleString()}</td>`;
             });
             html += '</tr>';
 
-            // Строка с процентами
+            // Строка с процентами (текущие)
             html += '<tr><td><strong>Процент</strong></td>';
             stages.forEach(stage => {
                 const percent = aggregated.opened_bot > 0 ? ((stage.count / aggregated.opened_bot) * 100).toFixed(1) : 0;
@@ -633,17 +642,100 @@
             });
             html += '</tr>';
 
-            // Добавляем 3 пустые строки для расчетов (редактируемые)
-            for (let i = 1; i <= 3; i++) {
-                html += '<tr class="editable-row">';
-                html += `<td><input type="text" placeholder="Метрика ${i}" style="font-weight: bold;" /></td>`;
-                stages.forEach(() => {
-                    html += '<td><input type="text" placeholder="0" /></td>';
-                });
-                html += '</tr>';
-            }
+            // Строка со значениями (редактируемые)
+            html += '<tr class="editable-row"><td><strong>Значение (ввод)</strong></td>';
+            stages.forEach((stage, index) => {
+                html += `<td><input type="number" class="funnel-value-input" data-index="${index}" value="${stage.count}" min="0" /></td>`;
+            });
+            html += '</tr>';
+
+            // Строка с процентами (редактируемые)
+            html += '<tr class="editable-row"><td><strong>Процент (ввод)</strong></td>';
+            stages.forEach((stage, index) => {
+                const percent = aggregated.opened_bot > 0 ? ((stage.count / aggregated.opened_bot) * 100).toFixed(1) : 0;
+                html += `<td><input type="number" class="funnel-percent-input" data-index="${index}" value="${percent}" min="0" max="100" step="0.1" /></td>`;
+            });
+            html += '</tr>';
 
             tbody.innerHTML = html;
+
+            // Сохраняем данные для расчетов
+            window.funnelData = {
+                stages: stages,
+                conversions: conversions,
+                baseCount: aggregated.opened_bot
+            };
+
+            // Добавляем обработчики изменений
+            attachFunnelInputHandlers();
+        }
+
+        function attachFunnelInputHandlers() {
+            // Обработчик для изменения процентов
+            document.querySelectorAll('.funnel-percent-input').forEach(input => {
+                input.addEventListener('input', function() {
+                    const index = parseInt(this.dataset.index);
+                    const newPercent = parseFloat(this.value) || 0;
+                    recalculateFunnelFromPercent(index, newPercent);
+                });
+            });
+
+            // Обработчик для изменения значений
+            document.querySelectorAll('.funnel-value-input').forEach(input => {
+                input.addEventListener('input', function() {
+                    const index = parseInt(this.dataset.index);
+                    const newValue = parseInt(this.value) || 0;
+                    recalculateFunnelFromValue(index, newValue);
+                });
+            });
+        }
+
+        function recalculateFunnelFromPercent(changedIndex, newPercent) {
+            const { baseCount, conversions } = window.funnelData;
+            const valueInputs = document.querySelectorAll('.funnel-value-input');
+            const percentInputs = document.querySelectorAll('.funnel-percent-input');
+
+            // Рассчитываем новое значение из процента
+            const newValue = Math.round((newPercent / 100) * baseCount);
+            valueInputs[changedIndex].value = newValue;
+
+            // Пересчитываем все этапы ниже с сохранением конверсий
+            if (changedIndex < conversions.length) {
+                let prevValue = newValue;
+                for (let i = changedIndex; i < conversions.length; i++) {
+                    const nextValue = Math.round(prevValue * conversions[i]);
+                    valueInputs[i + 1].value = nextValue;
+                    
+                    const nextPercent = baseCount > 0 ? ((nextValue / baseCount) * 100).toFixed(1) : 0;
+                    percentInputs[i + 1].value = nextPercent;
+                    
+                    prevValue = nextValue;
+                }
+            }
+        }
+
+        function recalculateFunnelFromValue(changedIndex, newValue) {
+            const { baseCount, conversions } = window.funnelData;
+            const valueInputs = document.querySelectorAll('.funnel-value-input');
+            const percentInputs = document.querySelectorAll('.funnel-percent-input');
+
+            // Обновляем процент для измененного значения
+            const newPercent = baseCount > 0 ? ((newValue / baseCount) * 100).toFixed(1) : 0;
+            percentInputs[changedIndex].value = newPercent;
+
+            // Пересчитываем все этапы ниже с сохранением конверсий
+            if (changedIndex < conversions.length) {
+                let prevValue = newValue;
+                for (let i = changedIndex; i < conversions.length; i++) {
+                    const nextValue = Math.round(prevValue * conversions[i]);
+                    valueInputs[i + 1].value = nextValue;
+                    
+                    const nextPercent = baseCount > 0 ? ((nextValue / baseCount) * 100).toFixed(1) : 0;
+                    percentInputs[i + 1].value = nextPercent;
+                    
+                    prevValue = nextValue;
+                }
+            }
         }
 
         async function loadTimeseriesData() {
