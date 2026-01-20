@@ -1316,55 +1316,82 @@ async def get_funnel_stats(
         raise HTTPException(status_code=500, detail=str(e))
 
 async def calculate_funnel_for_period(conn, period_start, period_end):
-    """Расчет воронки для заданного периода"""
+    """Расчет ПОСЛЕДОВАТЕЛЬНОЙ воронки для заданного периода"""
     
-    # 1. Открыли бота (база)
-    opened_bot = await conn.fetchval("""
-        SELECT COUNT(DISTINCT user_id) FROM users 
+    # 1. Открыли бота (база) - все активные в периоде
+    opened_bot_users = await conn.fetch("""
+        SELECT DISTINCT user_id FROM users 
         WHERE last_activity IS NOT NULL 
         AND last_activity::date >= $1 AND last_activity::date <= $2
-    """, period_start, period_end) or 0
+    """, period_start, period_end)
+    opened_bot_ids = set(row['user_id'] for row in opened_bot_users)
+    opened_bot = len(opened_bot_ids)
     
-    # 2. Добавили растение
-    added_plant = await conn.fetchval("""
-        SELECT COUNT(DISTINCT user_id) FROM plants 
-        WHERE saved_date::date >= $1 AND saved_date::date <= $2
-    """, period_start, period_end) or 0
+    # 2. ИЗ НИХ добавили растение (в любое время, не обязательно в периоде)
+    if opened_bot > 0:
+        added_plant_users = await conn.fetch("""
+            SELECT DISTINCT user_id FROM plants 
+            WHERE user_id = ANY($1::bigint[])
+        """, list(opened_bot_ids))
+        added_plant_ids = set(row['user_id'] for row in added_plant_users)
+        added_plant = len(added_plant_ids)
+    else:
+        added_plant_ids = set()
+        added_plant = 0
     
-    # 3. Полили растение
-    watered = await conn.fetchval("""
-        SELECT COUNT(DISTINCT p.user_id) 
-        FROM care_history ch
-        JOIN plants p ON ch.plant_id = p.id
-        WHERE ch.action_type = 'watered' 
-        AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
-    """, period_start, period_end) or 0
+    # 3. ИЗ НИХ полили растение (в любое время)
+    if added_plant > 0:
+        watered_users = await conn.fetch("""
+            SELECT DISTINCT p.user_id 
+            FROM care_history ch
+            JOIN plants p ON ch.plant_id = p.id
+            WHERE p.user_id = ANY($1::bigint[])
+            AND ch.action_type = 'watered'
+        """, list(added_plant_ids))
+        watered_ids = set(row['user_id'] for row in watered_users)
+        watered = len(watered_ids)
+    else:
+        watered_ids = set()
+        watered = 0
     
-    # 4. Задали вопрос AI
-    try:
-        asked_question = await conn.fetchval("""
-            SELECT COUNT(DISTINCT user_id) FROM plant_qa_history 
-            WHERE question_date::date >= $1 AND question_date::date <= $2
-        """, period_start, period_end) or 0
-    except Exception:
+    # 4. ИЗ НИХ задали вопрос AI (в любое время)
+    if watered > 0:
+        try:
+            asked_question_users = await conn.fetch("""
+                SELECT DISTINCT user_id FROM plant_qa_history 
+                WHERE user_id = ANY($1::bigint[])
+            """, list(watered_ids))
+            asked_question_ids = set(row['user_id'] for row in asked_question_users)
+            asked_question = len(asked_question_ids)
+        except Exception:
+            asked_question_ids = set()
+            asked_question = 0
+    else:
+        asked_question_ids = set()
         asked_question = 0
     
-    # 5. Активны в первые 14 дней
-    # Пользователи зарегистрированные в периоде, которые были активны в течение 14 дней после регистрации
-    active_14days = await conn.fetchval("""
-        SELECT COUNT(DISTINCT user_id) FROM users 
+    # 5. Активны в первые 14 дней - только из ЗАРЕГИСТРИРОВАННЫХ в периоде
+    registered_users = await conn.fetch("""
+        SELECT DISTINCT user_id FROM users 
         WHERE created_at::date >= $1 AND created_at::date <= $2
         AND last_activity IS NOT NULL
         AND last_activity::date >= created_at::date 
         AND last_activity::date <= created_at::date + 14
-    """, period_start, period_end) or 0
+    """, period_start, period_end)
+    active_14days = len(registered_users)
     
-    # Расчет процентов от базы
+    # Расчет процентов от базы (первого этапа)
     opened_bot_percent = 100.0
     added_plant_percent = round((added_plant / opened_bot * 100), 1) if opened_bot > 0 else 0
     watered_percent = round((watered / opened_bot * 100), 1) if opened_bot > 0 else 0
     asked_question_percent = round((asked_question / opened_bot * 100), 1) if opened_bot > 0 else 0
-    active_14days_percent = round((active_14days / opened_bot * 100), 1) if opened_bot > 0 else 0
+    
+    # Для 5-го этапа считаем от зарегистрированных в периоде
+    registered_in_period = await conn.fetchval("""
+        SELECT COUNT(*) FROM users 
+        WHERE created_at::date >= $1 AND created_at::date <= $2
+    """, period_start, period_end) or 1
+    active_14days_percent = round((active_14days / registered_in_period * 100), 1) if registered_in_period > 0 else 0
     
     return {
         "opened_bot": {
