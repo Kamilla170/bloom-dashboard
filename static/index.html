@@ -215,15 +215,8 @@
 
                 <div style="overflow-x: auto;">
                     <table class="funnel-table">
-                        <thead>
-                            <tr>
-                                <th>Этап</th>
-                                <th>Значение</th>
-                                <th>Процент</th>
-                            </tr>
-                        </thead>
                         <tbody id="funnel-table-body">
-                            <tr><td colspan="3" style="text-align: center; padding: 20px;">Загрузка...</td></tr>
+                            <tr><td colspan="6" style="text-align: center; padding: 20px;">Загрузка...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -608,32 +601,46 @@
             });
 
             const stages = [
-                { name: 'Открыли бота', count: aggregated.opened_bot },
-                { name: 'Добавили растение', count: aggregated.added_plant },
-                { name: 'Полили растение', count: aggregated.watered },
-                { name: 'Задали вопрос AI', count: aggregated.asked_question },
-                { name: 'Активны в первые 14 дней', count: aggregated.active_14days }
+                { key: 'opened_bot', name: 'Открыли бота', count: aggregated.opened_bot },
+                { key: 'added_plant', name: 'Добавили растение', count: aggregated.added_plant },
+                { key: 'watered', name: 'Полили растение', count: aggregated.watered },
+                { key: 'asked_question', name: 'Задали вопрос AI', count: aggregated.asked_question },
+                { key: 'active_14days', name: 'Активны 14 дней', count: aggregated.active_14days }
             ];
 
             const tbody = document.getElementById('funnel-table-body');
             let html = '';
 
+            // Строка с названиями этапов
+            html += '<tr><td><strong>Этап</strong></td>';
+            stages.forEach(stage => {
+                html += `<td><strong>${stage.name}</strong></td>`;
+            });
+            html += '</tr>';
+
+            // Строка со значениями
+            html += '<tr><td><strong>Значение</strong></td>';
+            stages.forEach(stage => {
+                html += `<td>${stage.count.toLocaleString()}</td>`;
+            });
+            html += '</tr>';
+
+            // Строка с процентами
+            html += '<tr><td><strong>Процент</strong></td>';
             stages.forEach(stage => {
                 const percent = aggregated.opened_bot > 0 ? ((stage.count / aggregated.opened_bot) * 100).toFixed(1) : 0;
-                html += `<tr>
-                    <td><strong>${stage.name}</strong></td>
-                    <td>${stage.count.toLocaleString()}</td>
-                    <td>${percent}%</td>
-                </tr>`;
+                html += `<td>${percent}%</td>`;
             });
+            html += '</tr>';
 
-            // Добавляем 3 пустые строки для расчетов
-            for (let i = 0; i < 3; i++) {
-                html += `<tr class="editable-row">
-                    <td><input type="text" placeholder="Название этапа" /></td>
-                    <td><input type="number" placeholder="0" /></td>
-                    <td><input type="number" placeholder="0" step="0.1" /></td>
-                </tr>`;
+            // Добавляем 3 пустые строки для расчетов (редактируемые)
+            for (let i = 1; i <= 3; i++) {
+                html += '<tr class="editable-row">';
+                html += `<td><input type="text" placeholder="Метрика ${i}" style="font-weight: bold;" /></td>`;
+                stages.forEach(() => {
+                    html += '<td><input type="text" placeholder="0" /></td>';
+                });
+                html += '</tr>';
             }
 
             tbody.innerHTML = html;
