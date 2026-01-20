@@ -385,16 +385,6 @@ async def get_month_stats():
         logger.error(f"Ошибка получения месячной статистики: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/health")
-async def health_check():
-    """Проверка здоровья"""
-    db_status = "connected" if db_pool else "disconnected"
-    return {
-        "status": "healthy",
-        "database": db_status,
-        "timestamp": datetime.now().isoformat()
-    }
-
 @app.get("/api/stats/additional")
 async def get_additional_stats():
     """Дополнительные метрики"""
@@ -551,7 +541,7 @@ async def get_actions_per_user_stats(
                             "added_growing_per_user": 0,
                             "asked_question_per_user": 0,
                             "left_feedback_per_user": 0,
-                            "plants_per_user": plants_per_user,  # Накопительная метрика всегда считается
+                            "plants_per_user": plants_per_user,
                             "active_users": 0
                         })
                         current_date += timedelta(days=1)
@@ -594,21 +584,6 @@ async def get_actions_per_user_stats(
                     except Exception:
                         total_left_feedback = 0
                     
-                    # Среднее количество растений на пользователя (накопительная метрика)
-                    # Считаем всех пользователей с хоть 1 растением на эту дату
-                    users_with_plants = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM plants
-                        WHERE saved_date::date <= $1
-                    """, current_date) or 0
-                    
-                    # Считаем все растения добавленные до этой даты
-                    total_plants_count = await conn.fetchval("""
-                        SELECT COUNT(*) FROM plants
-                        WHERE saved_date::date <= $1
-                    """, current_date) or 0
-                    
-                    plants_per_user = round(total_plants_count / users_with_plants, 2) if users_with_plants > 0 else 0
-                    
                     data_points.append({
                         "date": current_date.isoformat(),
                         "label": current_date.strftime("%d.%m"),
@@ -634,7 +609,6 @@ async def get_actions_per_user_stats(
                         AND last_activity::date >= $1 AND last_activity::date <= $2
                     """, current_date, week_end) or 0
                     
-                    # Среднее количество растений на пользователя (накопительная метрика)
                     users_with_plants = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM plants
                         WHERE saved_date::date <= $1
@@ -697,19 +671,6 @@ async def get_actions_per_user_stats(
                     except Exception:
                         total_left_feedback = 0
                     
-                    # Среднее количество растений на пользователя (накопительная метрика)
-                    users_with_plants = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM plants
-                        WHERE saved_date::date <= $1
-                    """, week_end) or 0
-                    
-                    total_plants_count = await conn.fetchval("""
-                        SELECT COUNT(*) FROM plants
-                        WHERE saved_date::date <= $1
-                    """, week_end) or 0
-                    
-                    plants_per_user = round(total_plants_count / users_with_plants, 2) if users_with_plants > 0 else 0
-                    
                     data_points.append({
                         "date": current_date.isoformat(),
                         "label": f"{current_date.strftime('%d.%m')}-{week_end.strftime('%d.%m')}",
@@ -737,7 +698,6 @@ async def get_actions_per_user_stats(
                         AND last_activity::date >= $1 AND last_activity::date <= $2
                     """, current_date, month_end) or 0
                     
-                    # Среднее количество растений на пользователя (накопительная метрика)
                     users_with_plants = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM plants
                         WHERE saved_date::date <= $1
@@ -799,19 +759,6 @@ async def get_actions_per_user_stats(
                         """, current_date, month_end) or 0
                     except Exception:
                         total_left_feedback = 0
-                    
-                    # Среднее количество растений на пользователя (накопительная метрика)
-                    users_with_plants = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM plants
-                        WHERE saved_date::date <= $1
-                    """, month_end) or 0
-                    
-                    total_plants_count = await conn.fetchval("""
-                        SELECT COUNT(*) FROM plants
-                        WHERE saved_date::date <= $1
-                    """, month_end) or 0
-                    
-                    plants_per_user = round(total_plants_count / users_with_plants, 2) if users_with_plants > 0 else 0
                     
                     data_points.append({
                         "date": current_date.isoformat(),
@@ -1289,6 +1236,168 @@ async def get_timeseries_stats(
     except Exception as e:
         logger.error(f"Ошибка получения timeseries данных: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stats/funnel")
+async def get_funnel_stats(
+    granularity: str = Query("day", regex="^(day|week|month)$"),
+    date_from: str = Query(...),
+    date_to: str = Query(...)
+):
+    """
+    Воронка пользователей
+    
+    Параметры:
+    - granularity: гранулярность данных (day, week, month)
+    - date_from: начальная дата (YYYY-MM-DD)
+    - date_to: конечная дата (YYYY-MM-DD)
+    
+    Этапы воронки (независимые от базы):
+    1. Открыли бота (база)
+    2. Добавили растение
+    3. Полили растение
+    4. Задали вопрос AI
+    5. Активны в первые 14 дней
+    """
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+    
+    try:
+        from_date = datetime.strptime(date_from, "%Y-%m-%d").date()
+        to_date = datetime.strptime(date_to, "%Y-%m-%d").date()
+        
+        if from_date > to_date:
+            raise HTTPException(status_code=400, detail="date_from must be before date_to")
+        
+        async with db_pool.acquire() as conn:
+            data_points = []
+            
+            if granularity == "day":
+                current_date = from_date
+                while current_date <= to_date:
+                    funnel_data = await calculate_funnel_for_period(conn, current_date, current_date)
+                    funnel_data["date"] = current_date.isoformat()
+                    funnel_data["label"] = current_date.strftime("%d.%m")
+                    data_points.append(funnel_data)
+                    current_date += timedelta(days=1)
+            
+            elif granularity == "week":
+                current_date = from_date
+                while current_date <= to_date:
+                    week_end = min(current_date + timedelta(days=6), to_date)
+                    funnel_data = await calculate_funnel_for_period(conn, current_date, week_end)
+                    funnel_data["date"] = current_date.isoformat()
+                    funnel_data["label"] = f"{current_date.strftime('%d.%m')}-{week_end.strftime('%d.%m')}"
+                    data_points.append(funnel_data)
+                    current_date += timedelta(days=7)
+            
+            elif granularity == "month":
+                current_date = from_date.replace(day=1)
+                while current_date <= to_date:
+                    month_end = (current_date + relativedelta(months=1) - timedelta(days=1))
+                    if month_end > to_date:
+                        month_end = to_date
+                    funnel_data = await calculate_funnel_for_period(conn, current_date, month_end)
+                    funnel_data["date"] = current_date.isoformat()
+                    funnel_data["label"] = current_date.strftime("%b %Y")
+                    data_points.append(funnel_data)
+                    current_date += relativedelta(months=1)
+            
+            return {
+                "granularity": granularity,
+                "date_from": date_from,
+                "date_to": date_to,
+                "data": data_points
+            }
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка получения funnel данных: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def calculate_funnel_for_period(conn, period_start, period_end):
+    """Расчет воронки для заданного периода"""
+    
+    # 1. Открыли бота (база)
+    opened_bot = await conn.fetchval("""
+        SELECT COUNT(DISTINCT user_id) FROM users 
+        WHERE last_activity IS NOT NULL 
+        AND last_activity::date >= $1 AND last_activity::date <= $2
+    """, period_start, period_end) or 0
+    
+    # 2. Добавили растение
+    added_plant = await conn.fetchval("""
+        SELECT COUNT(DISTINCT user_id) FROM plants 
+        WHERE saved_date::date >= $1 AND saved_date::date <= $2
+    """, period_start, period_end) or 0
+    
+    # 3. Полили растение
+    watered = await conn.fetchval("""
+        SELECT COUNT(DISTINCT p.user_id) 
+        FROM care_history ch
+        JOIN plants p ON ch.plant_id = p.id
+        WHERE ch.action_type = 'watered' 
+        AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
+    """, period_start, period_end) or 0
+    
+    # 4. Задали вопрос AI
+    try:
+        asked_question = await conn.fetchval("""
+            SELECT COUNT(DISTINCT user_id) FROM plant_qa_history 
+            WHERE question_date::date >= $1 AND question_date::date <= $2
+        """, period_start, period_end) or 0
+    except Exception:
+        asked_question = 0
+    
+    # 5. Активны в первые 14 дней
+    # Пользователи зарегистрированные в периоде, которые были активны в течение 14 дней после регистрации
+    active_14days = await conn.fetchval("""
+        SELECT COUNT(DISTINCT user_id) FROM users 
+        WHERE created_at::date >= $1 AND created_at::date <= $2
+        AND last_activity IS NOT NULL
+        AND last_activity::date >= created_at::date 
+        AND last_activity::date <= created_at::date + 14
+    """, period_start, period_end) or 0
+    
+    # Расчет процентов от базы
+    opened_bot_percent = 100.0
+    added_plant_percent = round((added_plant / opened_bot * 100), 1) if opened_bot > 0 else 0
+    watered_percent = round((watered / opened_bot * 100), 1) if opened_bot > 0 else 0
+    asked_question_percent = round((asked_question / opened_bot * 100), 1) if opened_bot > 0 else 0
+    active_14days_percent = round((active_14days / opened_bot * 100), 1) if opened_bot > 0 else 0
+    
+    return {
+        "opened_bot": {
+            "count": opened_bot,
+            "percent": opened_bot_percent
+        },
+        "added_plant": {
+            "count": added_plant,
+            "percent": added_plant_percent
+        },
+        "watered": {
+            "count": watered,
+            "percent": watered_percent
+        },
+        "asked_question": {
+            "count": asked_question,
+            "percent": asked_question_percent
+        },
+        "active_14days": {
+            "count": active_14days,
+            "percent": active_14days_percent
+        }
+    }
+
+@app.get("/api/health")
+async def health_check():
+    """Проверка здоровья"""
+    db_status = "connected" if db_pool else "disconnected"
+    return {
+        "status": "healthy",
+        "database": db_status,
+        "timestamp": datetime.now().isoformat()
+    }
 
 if __name__ == "__main__":
     import uvicorn
