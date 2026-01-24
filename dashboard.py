@@ -150,11 +150,11 @@ async def get_today_stats():
             
             # Количество уникальных пользователей которые полили
             users_watered_today = await conn.fetchval("""
-    SELECT COUNT(DISTINCT user_id) 
-    FROM care_history
-    WHERE action_type = 'watered' 
-    AND action_date::date = $1
-""", today)
+            SELECT COUNT(DISTINCT user_id) 
+            FROM care_history
+            WHERE action_type = 'watered' 
+            AND action_date::date = $1
+            """, today)
             
             # Пользователи которые добавили растение сегодня
             added_plants_today = await conn.fetchval("""
@@ -228,8 +228,8 @@ async def get_yesterday_stats():
             # Пользователи которые полили вчера
             watered = await conn.fetchval("""
                 SELECT COUNT(DISTINCT user_id) 
-FROM care_history
-WHERE action_type = 'watered'
+                FROM care_history
+                WHERE action_type = 'watered'
                 AND ch.action_date::date = $1
             """, yesterday)
             
@@ -300,8 +300,8 @@ async def get_week_stats():
                 # Поливы
                 watered = await conn.fetchval("""
                     SELECT COUNT(DISTINCT user_id) 
-FROM care_history
-WHERE action_type = 'watered' 
+                    FROM care_history
+                    WHERE action_type = 'watered' 
                     AND ch.action_date::date = $1
                 """, day)
                 
@@ -351,8 +351,8 @@ async def get_month_stats():
                 # Поливы
                 watered = await conn.fetchval("""
                     SELECT COUNT(DISTINCT user_id) 
-FROM care_history
-WHERE action_type = 'watered' 
+                    FROM care_history
+                    WHERE action_type = 'watered' 
                     AND ch.action_date::date = $1
                 """, day)
                 
@@ -1008,8 +1008,8 @@ async def get_timeseries_stats(
                     # Поливы (уникальные пользователи)
                     watered = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) 
-FROM care_history
-WHERE action_type = 'watered'
+                        FROM care_history
+                        WHERE action_type = 'watered'
                         AND ch.action_date::date = $1
                     """, current_date)
                     
@@ -1080,8 +1080,8 @@ WHERE action_type = 'watered'
                     # Поливы за неделю
                     watered = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) 
-FROM care_history
-WHERE action_type = 'watered' 
+                        FROM care_history
+                        WHERE action_type = 'watered' 
                         AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
                     """, current_date, week_end)
                     
@@ -1157,8 +1157,8 @@ WHERE action_type = 'watered'
                     # Поливы за месяц
                     watered = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) 
-FROM care_history
-WHERE action_type = 'watered' 
+                        FROM care_history
+                        WHERE action_type = 'watered' 
                         AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
                     """, current_date, month_end)
                     
