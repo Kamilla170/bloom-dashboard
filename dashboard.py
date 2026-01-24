@@ -480,6 +480,129 @@ async def get_additional_stats():
         logger.error(f"Ошибка получения дополнительных метрик: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/debug/date/{date}")
+async def debug_date_data(date: str):
+    """Диагностика данных за конкретную дату"""
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+    
+    try:
+        target_date = datetime.strptime(date, "%Y-%m-%d").date()
+        
+        async with db_pool.acquire() as conn:
+            # Проверяем вопросы
+            questions = await conn.fetch("""
+                SELECT user_id, question_date, question_text
+                FROM plant_qa_history 
+                WHERE question_date::date = $1
+                ORDER BY question_date
+            """, target_date)
+            
+            # Проверяем поливы
+            waterings = await conn.fetch("""
+                SELECT ch.id, ch.plant_id, ch.action_date, p.user_id, p.plant_name
+                FROM care_history ch
+                JOIN plants p ON ch.plant_id = p.id
+                WHERE ch.action_type = 'watered'
+                AND ch.action_date::date = $1
+                ORDER BY ch.action_date
+            """, target_date)
+            
+            # Проверяем активность пользователей
+            active_users = await conn.fetch("""
+                SELECT user_id, username, last_activity
+                FROM users 
+                WHERE last_activity IS NOT NULL 
+                AND last_activity::date = $1
+                ORDER BY last_activity
+            """, target_date)
+            
+            # Проверяем новых пользователей
+            new_users = await conn.fetch("""
+                SELECT user_id, username, created_at
+                FROM users 
+                WHERE created_at::date = $1
+                ORDER BY created_at
+            """, target_date)
+            
+            # Проверяем добавленные растения
+            added_plants = await conn.fetch("""
+                SELECT id, user_id, plant_name, saved_date
+                FROM plants 
+                WHERE saved_date::date = $1
+                ORDER BY saved_date
+            """, target_date)
+            
+            return {
+                "date": date,
+                "server_timezone": str(datetime.now().astimezone()),
+                "questions": {
+                    "count": len(questions),
+                    "data": [
+                        {
+                            "user_id": q["user_id"],
+                            "question_date": str(q["question_date"]),
+                            "question_text": q["question_text"][:100] if q["question_text"] else None
+                        }
+                        for q in questions
+                    ]
+                },
+                "waterings": {
+                    "count": len(waterings),
+                    "unique_users": len(set(w["user_id"] for w in waterings)),
+                    "data": [
+                        {
+                            "id": w["id"],
+                            "user_id": w["user_id"],
+                            "plant_id": w["plant_id"],
+                            "plant_name": w["plant_name"],
+                            "action_date": str(w["action_date"])
+                        }
+                        for w in waterings
+                    ]
+                },
+                "active_users": {
+                    "count": len(active_users),
+                    "data": [
+                        {
+                            "user_id": u["user_id"],
+                            "username": u["username"],
+                            "last_activity": str(u["last_activity"])
+                        }
+                        for u in active_users
+                    ]
+                },
+                "new_users": {
+                    "count": len(new_users),
+                    "data": [
+                        {
+                            "user_id": u["user_id"],
+                            "username": u["username"],
+                            "created_at": str(u["created_at"])
+                        }
+                        for u in new_users
+                    ]
+                },
+                "added_plants": {
+                    "count": len(added_plants),
+                    "unique_users": len(set(p["user_id"] for p in added_plants)),
+                    "data": [
+                        {
+                            "id": p["id"],
+                            "user_id": p["user_id"],
+                            "plant_name": p["plant_name"],
+                            "saved_date": str(p["saved_date"])
+                        }
+                        for p in added_plants
+                    ]
+                }
+            }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format. Use YYYY-MM-DD: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка диагностики данных: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/stats/actions-per-user")
 async def get_actions_per_user_stats(
     granularity: str = Query("day", regex="^(day|week|month)$"),
