@@ -609,16 +609,7 @@ async def get_actions_per_user_stats(
     date_from: str = Query(...),
     date_to: str = Query(...)
 ):
-    """
-    Статистика полезных действий на одного активного пользователя
-    
-    Параметры:
-    - granularity: гранулярность данных (day, week, month)
-    - date_from: начальная дата (YYYY-MM-DD)
-    - date_to: конечная дата (YYYY-MM-DD)
-    
-    Возвращает среднее количество действий на пользователя
-    """
+    """Статистика полезных действий на одного активного пользователя"""
     if not db_pool:
         raise HTTPException(status_code=500, detail="Database not connected")
     
@@ -635,14 +626,12 @@ async def get_actions_per_user_stats(
             if granularity == "day":
                 current_date = from_date
                 while current_date <= to_date:
-                    # Активные пользователи (база для расчета)
                     active_users = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM users 
                         WHERE last_activity IS NOT NULL 
                         AND last_activity::date = $1
                     """, current_date) or 0
                     
-                    # Среднее количество растений на пользователя (накопительная метрика - не зависит от активности)
                     users_with_plants = await conn.fetchval("""
                         SELECT COUNT(DISTINCT user_id) FROM plants
                         WHERE saved_date::date <= $1
@@ -670,19 +659,16 @@ async def get_actions_per_user_stats(
                         current_date += timedelta(days=1)
                         continue
                     
-                    # Всего поливов (событий, не уникальных пользователей)
                     total_watered = await conn.fetchval("""
                         SELECT COUNT(*) FROM care_history ch
                         WHERE ch.action_type = 'watered' 
                         AND ch.action_date::date = $1
                     """, current_date) or 0
                     
-                    # Всего добавлено растений (событий)
                     total_added_plants = await conn.fetchval("""
                         SELECT COUNT(*) FROM plants WHERE saved_date::date = $1
                     """, current_date) or 0
                     
-                    # Всего добавлено растений "рост с нуля"
                     try:
                         total_added_growing = await conn.fetchval("""
                             SELECT COUNT(*) FROM growing_plants 
@@ -691,7 +677,6 @@ async def get_actions_per_user_stats(
                     except Exception:
                         total_added_growing = 0
                     
-                    # Всего задано вопросов
                     try:
                         total_asked_question = await conn.fetchval("""
                             SELECT COUNT(*) FROM plant_qa_history WHERE question_date::date = $1
@@ -699,7 +684,6 @@ async def get_actions_per_user_stats(
                     except Exception:
                         total_asked_question = 0
                     
-                    # Всего оставлено отзывов
                     try:
                         total_left_feedback = await conn.fetchval("""
                             SELECT COUNT(*) FROM feedback WHERE created_at::date = $1
@@ -917,14 +901,7 @@ async def get_retention_flexible_stats(
     granularity: str = Query("day", regex="^(day|week|month)$"),
     period: int = Query(7, ge=1, le=365)
 ):
-    """
-    Гибкий расчет retention метрик с выбором гранулярности
-    
-    Параметры:
-    - retention_type: тип retention (classic/functional/rolling)
-    - granularity: гранулярность (day/week/month)
-    - period: период в единицах гранулярности (1-365 для дней, 1-52 для недель, 1-12 для месяцев)
-    """
+    """Гибкий расчет retention метрик с выбором гранулярности"""
     if not db_pool:
         raise HTTPException(status_code=500, detail="Database not connected")
     
@@ -933,8 +910,7 @@ async def get_retention_flexible_stats(
             cohorts = []
             
             if granularity == "day":
-                # По дням
-                for i in range(min(365, period * 5)):  # Анализируем последние N*5 дней когорт
+                for i in range(min(365, period * 5)):
                     cohort_date = (datetime.now() - timedelta(days=i + period)).date()
                     target_date = cohort_date + timedelta(days=period)
                     
@@ -960,10 +936,8 @@ async def get_retention_flexible_stats(
                     })
             
             elif granularity == "week":
-                # По неделям
                 for i in range(min(52, period * 5)):
                     cohort_start = (datetime.now() - timedelta(weeks=i + period)).date()
-                    # Начало недели (понедельник)
                     cohort_start = cohort_start - timedelta(days=cohort_start.weekday())
                     cohort_end = cohort_start + timedelta(days=6)
                     
@@ -993,7 +967,6 @@ async def get_retention_flexible_stats(
                     })
             
             elif granularity == "month":
-                # По месяцам
                 for i in range(min(12, period * 3)):
                     cohort_date = (datetime.now() - relativedelta(months=i + period)).date()
                     cohort_start = cohort_date.replace(day=1)
@@ -1039,7 +1012,6 @@ async def get_returned_users(conn, retention_type, cohort_start, cohort_end, tar
     """Вспомогательная функция для подсчета вернувшихся пользователей"""
     
     if retention_type == "classic":
-        # Classic retention - активность в целевом периоде
         returned = await conn.fetchval("""
             SELECT COUNT(DISTINCT u.user_id) FROM users u
             WHERE u.created_at::date >= $1 AND u.created_at::date <= $2
@@ -1048,7 +1020,6 @@ async def get_returned_users(conn, retention_type, cohort_start, cohort_end, tar
         """, cohort_start, cohort_end, target_start, target_end)
     
     elif retention_type == "functional":
-        # Functional retention - полезные действия в целевом периоде
         watered_users = await conn.fetch("""
             SELECT DISTINCT p.user_id
             FROM care_history ch
@@ -1083,7 +1054,6 @@ async def get_returned_users(conn, retention_type, cohort_start, cohort_end, tar
         returned = len(functional_users)
     
     elif retention_type == "rolling":
-        # Rolling retention - активность ЗА период
         rolling_start = cohort_end + timedelta(days=1)
         rolling_end = target_end
         
@@ -1102,14 +1072,7 @@ async def get_timeseries_stats(
     date_from: str = Query(...),
     date_to: str = Query(...)
 ):
-    """
-    Гибкая статистика с выбором периода и гранулярности
-    
-    Параметры:
-    - granularity: гранулярность данных (day, week, month)
-    - date_from: начальная дата (YYYY-MM-DD)
-    - date_to: конечная дата (YYYY-MM-DD)
-    """
+    """Гибкая статистика с выбором периода и гранулярности"""
     if not db_pool:
         raise HTTPException(status_code=500, detail="Database not connected")
     
@@ -1124,235 +1087,109 @@ async def get_timeseries_stats(
             data_points = []
             
             if granularity == "day":
-                # По дням
                 current_date = from_date
                 while current_date <= to_date:
-                    # Новые пользователи
-                    new_users = await conn.fetchval("""
-                        SELECT COUNT(*) FROM users WHERE created_at::date = $1
-                    """, current_date)
-                    
-                    # Поливы (уникальные пользователи)
+                    new_users = await conn.fetchval("SELECT COUNT(*) FROM users WHERE created_at::date = $1", current_date)
                     watered = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT p.user_id) 
-                        FROM care_history ch
+                        SELECT COUNT(DISTINCT p.user_id) FROM care_history ch
                         JOIN plants p ON ch.plant_id = p.id
-                        WHERE ch.action_type = 'watered'
-                        AND ch.action_date::date = $1
+                        WHERE ch.action_type = 'watered' AND ch.action_date::date = $1
                     """, current_date)
-                    
-                    # Добавили растения
-                    added_plants = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM plants WHERE saved_date::date = $1
-                    """, current_date)
-                    
-                    # Добавили рост с нуля (по дате начала выращивания)
+                    added_plants = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM plants WHERE saved_date::date = $1", current_date)
                     try:
-                        added_growing = await conn.fetchval("""
-                            SELECT COUNT(DISTINCT user_id) FROM growing_plants 
-                            WHERE started_date::date = $1
-                        """, current_date) or 0
-                    except Exception as e:
-                        logger.error(f"Ошибка подсчета growing: {e}")
+                        added_growing = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM growing_plants WHERE started_date::date = $1", current_date) or 0
+                    except Exception:
                         added_growing = 0
-                    
-                    # Задали вопрос
                     try:
-                        asked_question = await conn.fetchval("""
-                            SELECT COUNT(DISTINCT user_id) FROM plant_qa_history WHERE question_date::date = $1
-                        """, current_date) or 0
+                        asked_question = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM plant_qa_history WHERE question_date::date = $1", current_date) or 0
                     except Exception:
                         asked_question = 0
-                    
-                    # Оставили отзыв
                     try:
-                        left_feedback = await conn.fetchval("""
-                            SELECT COUNT(DISTINCT user_id) FROM feedback WHERE created_at::date = $1
-                        """, current_date) or 0
+                        left_feedback = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM feedback WHERE created_at::date = $1", current_date) or 0
                     except Exception:
                         left_feedback = 0
-                    
-                    # Открыли бота (last_activity)
-                    opened_bot = await conn.fetchval("""
-                        SELECT COUNT(*) FROM users 
-                        WHERE last_activity IS NOT NULL 
-                        AND last_activity::date = $1
-                    """, current_date)
+                    opened_bot = await conn.fetchval("SELECT COUNT(*) FROM users WHERE last_activity IS NOT NULL AND last_activity::date = $1", current_date)
                     
                     data_points.append({
-                        "date": current_date.isoformat(),
-                        "label": current_date.strftime("%d.%m"),
-                        "new_users": new_users or 0,
-                        "watered": watered or 0,
-                        "added_plants": added_plants or 0,
-                        "added_growing": added_growing,
-                        "asked_question": asked_question,
-                        "left_feedback": left_feedback,
+                        "date": current_date.isoformat(), "label": current_date.strftime("%d.%m"),
+                        "new_users": new_users or 0, "watered": watered or 0,
+                        "added_plants": added_plants or 0, "added_growing": added_growing,
+                        "asked_question": asked_question, "left_feedback": left_feedback,
                         "opened_bot": opened_bot or 0
                     })
-                    
                     current_date += timedelta(days=1)
             
             elif granularity == "week":
-                # По неделям
                 current_date = from_date
                 while current_date <= to_date:
                     week_end = min(current_date + timedelta(days=6), to_date)
-                    
-                    # Новые пользователи за неделю
-                    new_users = await conn.fetchval("""
-                        SELECT COUNT(*) FROM users 
-                        WHERE created_at::date >= $1 AND created_at::date <= $2
-                    """, current_date, week_end)
-                    
-                    # Поливы за неделю
+                    new_users = await conn.fetchval("SELECT COUNT(*) FROM users WHERE created_at::date >= $1 AND created_at::date <= $2", current_date, week_end)
                     watered = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT p.user_id) 
-                        FROM care_history ch
+                        SELECT COUNT(DISTINCT p.user_id) FROM care_history ch
                         JOIN plants p ON ch.plant_id = p.id
-                        WHERE ch.action_type = 'watered' 
-                        AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
+                        WHERE ch.action_type = 'watered' AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
                     """, current_date, week_end)
-                    
-                    # Добавили растения за неделю
-                    added_plants = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM plants 
-                        WHERE saved_date::date >= $1 AND saved_date::date <= $2
-                    """, current_date, week_end)
-                    
-                    # Добавили рост с нуля за неделю
+                    added_plants = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM plants WHERE saved_date::date >= $1 AND saved_date::date <= $2", current_date, week_end)
                     try:
-                        added_growing = await conn.fetchval("""
-                            SELECT COUNT(DISTINCT user_id) FROM growing_plants 
-                            WHERE started_date::date >= $1 AND started_date::date <= $2
-                        """, current_date, week_end) or 0
-                    except Exception as e:
-                        logger.error(f"Ошибка подсчета growing (week): {e}")
+                        added_growing = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM growing_plants WHERE started_date::date >= $1 AND started_date::date <= $2", current_date, week_end) or 0
+                    except Exception:
                         added_growing = 0
-                    
-                    # Задали вопрос за неделю
                     try:
-                        asked_question = await conn.fetchval("""
-                            SELECT COUNT(DISTINCT user_id) FROM plant_qa_history 
-                            WHERE question_date::date >= $1 AND question_date::date <= $2
-                        """, current_date, week_end) or 0
+                        asked_question = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM plant_qa_history WHERE question_date::date >= $1 AND question_date::date <= $2", current_date, week_end) or 0
                     except Exception:
                         asked_question = 0
-                    
-                    # Оставили отзыв за неделю
                     try:
-                        left_feedback = await conn.fetchval("""
-                            SELECT COUNT(DISTINCT user_id) FROM feedback 
-                            WHERE created_at::date >= $1 AND created_at::date <= $2
-                        """, current_date, week_end) or 0
+                        left_feedback = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM feedback WHERE created_at::date >= $1 AND created_at::date <= $2", current_date, week_end) or 0
                     except Exception:
                         left_feedback = 0
-                    
-                    # Открыли бота за неделю (уникальные)
-                    opened_bot = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM users 
-                        WHERE last_activity IS NOT NULL 
-                        AND last_activity::date >= $1 AND last_activity::date <= $2
-                    """, current_date, week_end)
+                    opened_bot = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM users WHERE last_activity IS NOT NULL AND last_activity::date >= $1 AND last_activity::date <= $2", current_date, week_end)
                     
                     data_points.append({
-                        "date": current_date.isoformat(),
-                        "label": f"{current_date.strftime('%d.%m')}-{week_end.strftime('%d.%m')}",
-                        "new_users": new_users or 0,
-                        "watered": watered or 0,
-                        "added_plants": added_plants or 0,
-                        "added_growing": added_growing,
-                        "asked_question": asked_question,
-                        "left_feedback": left_feedback,
+                        "date": current_date.isoformat(), "label": f"{current_date.strftime('%d.%m')}-{week_end.strftime('%d.%m')}",
+                        "new_users": new_users or 0, "watered": watered or 0,
+                        "added_plants": added_plants or 0, "added_growing": added_growing,
+                        "asked_question": asked_question, "left_feedback": left_feedback,
                         "opened_bot": opened_bot or 0
                     })
-                    
                     current_date += timedelta(days=7)
             
             elif granularity == "month":
-                # По месяцам
                 current_date = from_date.replace(day=1)
                 while current_date <= to_date:
                     month_end = (current_date + relativedelta(months=1) - timedelta(days=1))
                     if month_end > to_date:
                         month_end = to_date
-                    
-                    # Новые пользователи за месяц
-                    new_users = await conn.fetchval("""
-                        SELECT COUNT(*) FROM users 
-                        WHERE created_at::date >= $1 AND created_at::date <= $2
-                    """, current_date, month_end)
-                    
-                    # Поливы за месяц
+                    new_users = await conn.fetchval("SELECT COUNT(*) FROM users WHERE created_at::date >= $1 AND created_at::date <= $2", current_date, month_end)
                     watered = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT p.user_id) 
-                        FROM care_history ch
+                        SELECT COUNT(DISTINCT p.user_id) FROM care_history ch
                         JOIN plants p ON ch.plant_id = p.id
-                        WHERE ch.action_type = 'watered' 
-                        AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
+                        WHERE ch.action_type = 'watered' AND ch.action_date::date >= $1 AND ch.action_date::date <= $2
                     """, current_date, month_end)
-                    
-                    # Добавили растения за месяц
-                    added_plants = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM plants 
-                        WHERE saved_date::date >= $1 AND saved_date::date <= $2
-                    """, current_date, month_end)
-                    
-                    # Добавили рост с нуля за месяц
+                    added_plants = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM plants WHERE saved_date::date >= $1 AND saved_date::date <= $2", current_date, month_end)
                     try:
-                        added_growing = await conn.fetchval("""
-                            SELECT COUNT(DISTINCT user_id) FROM growing_plants 
-                            WHERE started_date::date >= $1 AND started_date::date <= $2
-                        """, current_date, month_end) or 0
-                    except Exception as e:
-                        logger.error(f"Ошибка подсчета growing (month): {e}")
+                        added_growing = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM growing_plants WHERE started_date::date >= $1 AND started_date::date <= $2", current_date, month_end) or 0
+                    except Exception:
                         added_growing = 0
-                    
-                    # Задали вопрос за месяц
                     try:
-                        asked_question = await conn.fetchval("""
-                            SELECT COUNT(DISTINCT user_id) FROM plant_qa_history 
-                            WHERE question_date::date >= $1 AND question_date::date <= $2
-                        """, current_date, month_end) or 0
+                        asked_question = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM plant_qa_history WHERE question_date::date >= $1 AND question_date::date <= $2", current_date, month_end) or 0
                     except Exception:
                         asked_question = 0
-                    
-                    # Оставили отзыв за месяц
                     try:
-                        left_feedback = await conn.fetchval("""
-                            SELECT COUNT(DISTINCT user_id) FROM feedback 
-                            WHERE created_at::date >= $1 AND created_at::date <= $2
-                        """, current_date, month_end) or 0
+                        left_feedback = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM feedback WHERE created_at::date >= $1 AND created_at::date <= $2", current_date, month_end) or 0
                     except Exception:
                         left_feedback = 0
-                    
-                    # Открыли бота за месяц (уникальные)
-                    opened_bot = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT user_id) FROM users 
-                        WHERE last_activity IS NOT NULL 
-                        AND last_activity::date >= $1 AND last_activity::date <= $2
-                    """, current_date, month_end)
+                    opened_bot = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM users WHERE last_activity IS NOT NULL AND last_activity::date >= $1 AND last_activity::date <= $2", current_date, month_end)
                     
                     data_points.append({
-                        "date": current_date.isoformat(),
-                        "label": current_date.strftime("%b %Y"),
-                        "new_users": new_users or 0,
-                        "watered": watered or 0,
-                        "added_plants": added_plants or 0,
-                        "added_growing": added_growing,
-                        "asked_question": asked_question,
-                        "left_feedback": left_feedback,
+                        "date": current_date.isoformat(), "label": current_date.strftime("%b %Y"),
+                        "new_users": new_users or 0, "watered": watered or 0,
+                        "added_plants": added_plants or 0, "added_growing": added_growing,
+                        "asked_question": asked_question, "left_feedback": left_feedback,
                         "opened_bot": opened_bot or 0
                     })
-                    
                     current_date += relativedelta(months=1)
             
-            return {
-                "granularity": granularity,
-                "date_from": date_from,
-                "date_to": date_to,
-                "data": data_points
-            }
+            return {"granularity": granularity, "date_from": date_from, "date_to": date_to, "data": data_points}
     
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
@@ -1366,21 +1203,7 @@ async def get_funnel_stats(
     date_from: str = Query(...),
     date_to: str = Query(...)
 ):
-    """
-    Воронка пользователей
-    
-    Параметры:
-    - granularity: гранулярность данных (day, week, month)
-    - date_from: начальная дата (YYYY-MM-DD)
-    - date_to: конечная дата (YYYY-MM-DD)
-    
-    Этапы воронки (независимые от базы):
-    1. Открыли бота (база)
-    2. Добавили растение
-    3. Полили растение
-    4. Задали вопрос AI
-    5. Активны в первые 14 дней
-    """
+    """Воронка пользователей"""
     if not db_pool:
         raise HTTPException(status_code=500, detail="Database not connected")
     
@@ -1425,12 +1248,7 @@ async def get_funnel_stats(
                     data_points.append(funnel_data)
                     current_date += relativedelta(months=1)
             
-            return {
-                "granularity": granularity,
-                "date_from": date_from,
-                "date_to": date_to,
-                "data": data_points
-            }
+            return {"granularity": granularity, "date_from": date_from, "date_to": date_to, "data": data_points}
     
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
@@ -1441,7 +1259,6 @@ async def get_funnel_stats(
 async def calculate_funnel_for_period(conn, period_start, period_end):
     """Расчет ПОСЛЕДОВАТЕЛЬНОЙ воронки для заданного периода"""
     
-    # 1. Открыли бота (база) - все активные в периоде
     opened_bot_users = await conn.fetch("""
         SELECT DISTINCT user_id FROM users 
         WHERE last_activity IS NOT NULL 
@@ -1450,11 +1267,9 @@ async def calculate_funnel_for_period(conn, period_start, period_end):
     opened_bot_ids = set(row['user_id'] for row in opened_bot_users)
     opened_bot = len(opened_bot_ids)
     
-    # 2. ИЗ НИХ добавили растение (в любое время, не обязательно в периоде)
     if opened_bot > 0:
         added_plant_users = await conn.fetch("""
-            SELECT DISTINCT user_id FROM plants 
-            WHERE user_id = ANY($1::bigint[])
+            SELECT DISTINCT user_id FROM plants WHERE user_id = ANY($1::bigint[])
         """, list(opened_bot_ids))
         added_plant_ids = set(row['user_id'] for row in added_plant_users)
         added_plant = len(added_plant_ids)
@@ -1462,14 +1277,11 @@ async def calculate_funnel_for_period(conn, period_start, period_end):
         added_plant_ids = set()
         added_plant = 0
     
-    # 3. ИЗ НИХ полили растение (в любое время)
     if added_plant > 0:
         watered_users = await conn.fetch("""
-            SELECT DISTINCT p.user_id 
-            FROM care_history ch
+            SELECT DISTINCT p.user_id FROM care_history ch
             JOIN plants p ON ch.plant_id = p.id
-            WHERE p.user_id = ANY($1::bigint[])
-            AND ch.action_type = 'watered'
+            WHERE p.user_id = ANY($1::bigint[]) AND ch.action_type = 'watered'
         """, list(added_plant_ids))
         watered_ids = set(row['user_id'] for row in watered_users)
         watered = len(watered_ids)
@@ -1477,12 +1289,10 @@ async def calculate_funnel_for_period(conn, period_start, period_end):
         watered_ids = set()
         watered = 0
     
-    # 4. ИЗ НИХ задали вопрос AI (в любое время)
     if watered > 0:
         try:
             asked_question_users = await conn.fetch("""
-                SELECT DISTINCT user_id FROM plant_qa_history 
-                WHERE user_id = ANY($1::bigint[])
+                SELECT DISTINCT user_id FROM plant_qa_history WHERE user_id = ANY($1::bigint[])
             """, list(watered_ids))
             asked_question_ids = set(row['user_id'] for row in asked_question_users)
             asked_question = len(asked_question_ids)
@@ -1493,7 +1303,6 @@ async def calculate_funnel_for_period(conn, period_start, period_end):
         asked_question_ids = set()
         asked_question = 0
     
-    # 5. Активны в первые 14 дней - только из ЗАРЕГИСТРИРОВАННЫХ в периоде
     registered_users = await conn.fetch("""
         SELECT DISTINCT user_id FROM users 
         WHERE created_at::date >= $1 AND created_at::date <= $2
@@ -1503,41 +1312,366 @@ async def calculate_funnel_for_period(conn, period_start, period_end):
     """, period_start, period_end)
     active_14days = len(registered_users)
     
-    # Расчет процентов от базы (первого этапа)
     opened_bot_percent = 100.0
     added_plant_percent = round((added_plant / opened_bot * 100), 1) if opened_bot > 0 else 0
     watered_percent = round((watered / opened_bot * 100), 1) if opened_bot > 0 else 0
     asked_question_percent = round((asked_question / opened_bot * 100), 1) if opened_bot > 0 else 0
     
-    # Для 5-го этапа считаем от зарегистрированных в периоде
     registered_in_period = await conn.fetchval("""
-        SELECT COUNT(*) FROM users 
-        WHERE created_at::date >= $1 AND created_at::date <= $2
+        SELECT COUNT(*) FROM users WHERE created_at::date >= $1 AND created_at::date <= $2
     """, period_start, period_end) or 1
     active_14days_percent = round((active_14days / registered_in_period * 100), 1) if registered_in_period > 0 else 0
     
     return {
-        "opened_bot": {
-            "count": opened_bot,
-            "percent": opened_bot_percent
-        },
-        "added_plant": {
-            "count": added_plant,
-            "percent": added_plant_percent
-        },
-        "watered": {
-            "count": watered,
-            "percent": watered_percent
-        },
-        "asked_question": {
-            "count": asked_question,
-            "percent": asked_question_percent
-        },
-        "active_14days": {
-            "count": active_14days,
-            "percent": active_14days_percent
-        }
+        "opened_bot": {"count": opened_bot, "percent": opened_bot_percent},
+        "added_plant": {"count": added_plant, "percent": added_plant_percent},
+        "watered": {"count": watered, "percent": watered_percent},
+        "asked_question": {"count": asked_question, "percent": asked_question_percent},
+        "active_14days": {"count": active_14days, "percent": active_14days_percent}
     }
+
+
+# =============================================
+# НОВЫЕ ЭНДПОИНТЫ: ОПЛАТЫ И UTM
+# =============================================
+
+@app.get("/api/stats/payments")
+async def get_payment_stats():
+    """Общая статистика по оплатам"""
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+    
+    try:
+        async with db_pool.acquire() as conn:
+            today = datetime.now().date()
+            week_ago = today - timedelta(days=7)
+            month_ago = today - timedelta(days=30)
+            
+            # Всего успешных оплат
+            total_payments = await conn.fetchval(
+                "SELECT COUNT(*) FROM payments WHERE status = 'succeeded'"
+            ) or 0
+            
+            # Общая выручка
+            total_revenue = await conn.fetchval(
+                "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'succeeded'"
+            ) or 0
+            
+            # Выручка за сегодня
+            revenue_today = await conn.fetchval("""
+                SELECT COALESCE(SUM(amount), 0) FROM payments 
+                WHERE status = 'succeeded' AND created_at::date = $1
+            """, today) or 0
+            
+            payments_today = await conn.fetchval("""
+                SELECT COUNT(*) FROM payments 
+                WHERE status = 'succeeded' AND created_at::date = $1
+            """, today) or 0
+            
+            # Выручка за неделю
+            revenue_week = await conn.fetchval("""
+                SELECT COALESCE(SUM(amount), 0) FROM payments 
+                WHERE status = 'succeeded' AND created_at::date >= $1
+            """, week_ago) or 0
+            
+            payments_week = await conn.fetchval("""
+                SELECT COUNT(*) FROM payments 
+                WHERE status = 'succeeded' AND created_at::date >= $1
+            """, week_ago) or 0
+            
+            # Выручка за месяц
+            revenue_month = await conn.fetchval("""
+                SELECT COALESCE(SUM(amount), 0) FROM payments 
+                WHERE status = 'succeeded' AND created_at::date >= $1
+            """, month_ago) or 0
+            
+            payments_month = await conn.fetchval("""
+                SELECT COUNT(*) FROM payments 
+                WHERE status = 'succeeded' AND created_at::date >= $1
+            """, month_ago) or 0
+            
+            # Средний чек
+            avg_check = await conn.fetchval(
+                "SELECT COALESCE(AVG(amount), 0) FROM payments WHERE status = 'succeeded'"
+            ) or 0
+            
+            # Активные подписки
+            active_subs = await conn.fetchval(
+                "SELECT COUNT(*) FROM subscriptions WHERE plan = 'pro' AND (expires_at IS NULL OR expires_at > NOW())"
+            ) or 0
+            
+            # Подписки с автопродлением
+            auto_pay_subs = await conn.fetchval(
+                "SELECT COUNT(*) FROM subscriptions WHERE plan = 'pro' AND auto_pay_method_id IS NOT NULL AND (expires_at IS NULL OR expires_at > NOW())"
+            ) or 0
+            
+            # Уникальные платящие пользователи
+            unique_payers = await conn.fetchval(
+                "SELECT COUNT(DISTINCT user_id) FROM payments WHERE status = 'succeeded'"
+            ) or 0
+            
+            # Рекуррентные платежи
+            recurring_payments = await conn.fetchval(
+                "SELECT COUNT(*) FROM payments WHERE status = 'succeeded' AND is_recurring = TRUE"
+            ) or 0
+            
+            # Конверсия в оплату (всего пользователей vs платящих)
+            total_users = await conn.fetchval("SELECT COUNT(*) FROM users") or 1
+            conversion_rate = round((unique_payers / total_users * 100), 2)
+            
+            return {
+                "total_payments": total_payments,
+                "total_revenue": total_revenue,
+                "today": {
+                    "revenue": revenue_today,
+                    "payments": payments_today
+                },
+                "week": {
+                    "revenue": revenue_week,
+                    "payments": payments_week
+                },
+                "month": {
+                    "revenue": revenue_month,
+                    "payments": payments_month
+                },
+                "avg_check": round(avg_check),
+                "active_subscriptions": active_subs,
+                "auto_pay_subscriptions": auto_pay_subs,
+                "unique_payers": unique_payers,
+                "recurring_payments": recurring_payments,
+                "conversion_rate": conversion_rate,
+                "total_users": total_users
+            }
+    except Exception as e:
+        logger.error(f"Ошибка получения статистики оплат: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/stats/payments/timeseries")
+async def get_payment_timeseries(
+    granularity: str = Query("day", regex="^(day|week|month)$"),
+    date_from: str = Query(...),
+    date_to: str = Query(...)
+):
+    """Выручка и оплаты по времени"""
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+    
+    try:
+        from_date = datetime.strptime(date_from, "%Y-%m-%d").date()
+        to_date = datetime.strptime(date_to, "%Y-%m-%d").date()
+        
+        if from_date > to_date:
+            raise HTTPException(status_code=400, detail="date_from must be before date_to")
+        
+        async with db_pool.acquire() as conn:
+            data_points = []
+            
+            if granularity == "day":
+                current_date = from_date
+                while current_date <= to_date:
+                    revenue = await conn.fetchval("""
+                        SELECT COALESCE(SUM(amount), 0) FROM payments 
+                        WHERE status = 'succeeded' AND created_at::date = $1
+                    """, current_date) or 0
+                    
+                    count = await conn.fetchval("""
+                        SELECT COUNT(*) FROM payments 
+                        WHERE status = 'succeeded' AND created_at::date = $1
+                    """, current_date) or 0
+                    
+                    new_subs = await conn.fetchval("""
+                        SELECT COUNT(*) FROM payments 
+                        WHERE status = 'succeeded' AND is_recurring = FALSE AND created_at::date = $1
+                    """, current_date) or 0
+                    
+                    renewals = await conn.fetchval("""
+                        SELECT COUNT(*) FROM payments 
+                        WHERE status = 'succeeded' AND is_recurring = TRUE AND created_at::date = $1
+                    """, current_date) or 0
+                    
+                    data_points.append({
+                        "date": current_date.isoformat(),
+                        "label": current_date.strftime("%d.%m"),
+                        "revenue": revenue,
+                        "payments": count,
+                        "new_subscriptions": new_subs,
+                        "renewals": renewals
+                    })
+                    current_date += timedelta(days=1)
+            
+            elif granularity == "week":
+                current_date = from_date
+                while current_date <= to_date:
+                    week_end = min(current_date + timedelta(days=6), to_date)
+                    
+                    revenue = await conn.fetchval("""
+                        SELECT COALESCE(SUM(amount), 0) FROM payments 
+                        WHERE status = 'succeeded' AND created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, week_end) or 0
+                    
+                    count = await conn.fetchval("""
+                        SELECT COUNT(*) FROM payments 
+                        WHERE status = 'succeeded' AND created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, week_end) or 0
+                    
+                    new_subs = await conn.fetchval("""
+                        SELECT COUNT(*) FROM payments 
+                        WHERE status = 'succeeded' AND is_recurring = FALSE AND created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, week_end) or 0
+                    
+                    renewals = await conn.fetchval("""
+                        SELECT COUNT(*) FROM payments 
+                        WHERE status = 'succeeded' AND is_recurring = TRUE AND created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, week_end) or 0
+                    
+                    data_points.append({
+                        "date": current_date.isoformat(),
+                        "label": f"{current_date.strftime('%d.%m')}-{week_end.strftime('%d.%m')}",
+                        "revenue": revenue,
+                        "payments": count,
+                        "new_subscriptions": new_subs,
+                        "renewals": renewals
+                    })
+                    current_date += timedelta(days=7)
+            
+            elif granularity == "month":
+                current_date = from_date.replace(day=1)
+                while current_date <= to_date:
+                    month_end = (current_date + relativedelta(months=1) - timedelta(days=1))
+                    if month_end > to_date:
+                        month_end = to_date
+                    
+                    revenue = await conn.fetchval("""
+                        SELECT COALESCE(SUM(amount), 0) FROM payments 
+                        WHERE status = 'succeeded' AND created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, month_end) or 0
+                    
+                    count = await conn.fetchval("""
+                        SELECT COUNT(*) FROM payments 
+                        WHERE status = 'succeeded' AND created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, month_end) or 0
+                    
+                    new_subs = await conn.fetchval("""
+                        SELECT COUNT(*) FROM payments 
+                        WHERE status = 'succeeded' AND is_recurring = FALSE AND created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, month_end) or 0
+                    
+                    renewals = await conn.fetchval("""
+                        SELECT COUNT(*) FROM payments 
+                        WHERE status = 'succeeded' AND is_recurring = TRUE AND created_at::date >= $1 AND created_at::date <= $2
+                    """, current_date, month_end) or 0
+                    
+                    data_points.append({
+                        "date": current_date.isoformat(),
+                        "label": current_date.strftime("%b %Y"),
+                        "revenue": revenue,
+                        "payments": count,
+                        "new_subscriptions": new_subs,
+                        "renewals": renewals
+                    })
+                    current_date += relativedelta(months=1)
+            
+            return {
+                "granularity": granularity,
+                "date_from": date_from,
+                "date_to": date_to,
+                "data": data_points
+            }
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка получения payment timeseries: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/stats/utm")
+async def get_utm_stats():
+    """Статистика по UTM-источникам с воронкой"""
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+    
+    try:
+        async with db_pool.acquire() as conn:
+            # Все источники с количеством регистраций
+            sources = await conn.fetch("""
+                SELECT 
+                    COALESCE(u.utm_source, '(organic)') as source,
+                    COUNT(*) as registered,
+                    COUNT(CASE WHEN u.last_activity IS NOT NULL 
+                          AND u.last_activity::date > u.created_at::date THEN 1 END) as returned,
+                    MIN(u.created_at) as first_user,
+                    MAX(u.created_at) as last_user
+                FROM users u
+                GROUP BY COALESCE(u.utm_source, '(organic)')
+                ORDER BY registered DESC
+            """)
+            
+            result = []
+            
+            for src in sources:
+                source_name = src['source']
+                registered = src['registered']
+                
+                if source_name == '(organic)':
+                    # Для органики — пользователи без utm
+                    user_filter = "u.utm_source IS NULL"
+                else:
+                    user_filter = f"u.utm_source = '{source_name}'"
+                
+                # Добавили растение
+                added_plant = await conn.fetchval(f"""
+                    SELECT COUNT(DISTINCT p.user_id) FROM plants p
+                    JOIN users u ON p.user_id = u.user_id
+                    WHERE {user_filter}
+                """) or 0
+                
+                # Полили
+                watered = await conn.fetchval(f"""
+                    SELECT COUNT(DISTINCT p2.user_id) 
+                    FROM care_history ch
+                    JOIN plants p2 ON ch.plant_id = p2.id
+                    JOIN users u ON p2.user_id = u.user_id
+                    WHERE ch.action_type = 'watered' AND {user_filter}
+                """) or 0
+                
+                # Оплатили
+                paid = await conn.fetchval(f"""
+                    SELECT COUNT(DISTINCT pay.user_id) FROM payments pay
+                    JOIN users u ON pay.user_id = u.user_id
+                    WHERE pay.status = 'succeeded' AND {user_filter}
+                """) or 0
+                
+                # Выручка
+                revenue = await conn.fetchval(f"""
+                    SELECT COALESCE(SUM(pay.amount), 0) FROM payments pay
+                    JOIN users u ON pay.user_id = u.user_id
+                    WHERE pay.status = 'succeeded' AND {user_filter}
+                """) or 0
+                
+                result.append({
+                    "source": source_name,
+                    "registered": registered,
+                    "returned": src['returned'] or 0,
+                    "added_plant": added_plant,
+                    "watered": watered,
+                    "paid": paid,
+                    "revenue": revenue,
+                    "conversion_to_plant": round(added_plant / registered * 100, 1) if registered > 0 else 0,
+                    "conversion_to_payment": round(paid / registered * 100, 1) if registered > 0 else 0,
+                    "arpu": round(revenue / registered) if registered > 0 else 0,
+                    "arppu": round(revenue / paid) if paid > 0 else 0,
+                    "first_user": src['first_user'].isoformat() if src['first_user'] else None,
+                    "last_user": src['last_user'].isoformat() if src['last_user'] else None,
+                })
+            
+            return {"sources": result}
+    
+    except Exception as e:
+        logger.error(f"Ошибка получения UTM статистики: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/health")
 async def health_check():
