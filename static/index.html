@@ -181,6 +181,103 @@
                 </div>
             </div>
 
+            <!-- ====== СЕКЦИЯ ОПЛАТ ====== -->
+            <div class="charts-section">
+                <h2>💳 Статистика оплат</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">💰</div>
+                        <h3>Общая выручка</h3>
+                        <div class="stat-value" id="total-revenue">-</div>
+                        <div class="stat-percent">Сегодня: <span id="revenue-today">-</span>₽</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📦</div>
+                        <h3>Всего оплат</h3>
+                        <div class="stat-value" id="total-payments-count">-</div>
+                        <div class="stat-percent">За неделю: <span id="payments-week">-</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🧾</div>
+                        <h3>Средний чек</h3>
+                        <div class="stat-value" id="avg-check">-</div>
+                        <div class="stat-percent">Уникальных плательщиков: <span id="unique-payers">-</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⭐</div>
+                        <h3>Активные подписки</h3>
+                        <div class="stat-value" id="active-subs">-</div>
+                        <div class="stat-percent">С автопродлением: <span id="auto-pay-subs">-</span></div>
+                    </div>
+                </div>
+                <div class="comparison-grid" style="margin-top: 20px;">
+                    <div class="day-stats">
+                        <h3>📊 Конверсии</h3>
+                        <div class="day-stats-item"><span>Конверсия в оплату:</span><strong id="payment-conversion">-</strong></div>
+                        <div class="day-stats-item"><span>Рекуррентных оплат:</span><strong id="recurring-count">-</strong></div>
+                        <div class="day-stats-item"><span>Выручка за месяц:</span><strong id="revenue-month">-</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-section">
+                <h2>📈 Динамика выручки</h2>
+                <div class="control-panel">
+                    <div class="control-row">
+                        <span class="control-label">📊 Гранулярность:</span>
+                        <div class="button-group">
+                            <button class="control-btn active" data-pay-granularity="day">📅 День</button>
+                            <button class="control-btn" data-pay-granularity="week">📊 Неделя</button>
+                            <button class="control-btn" data-pay-granularity="month">📆 Месяц</button>
+                        </div>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">⏱️ Период:</span>
+                        <div class="button-group">
+                            <button class="control-btn" data-pay-period="7d">Last 7 days</button>
+                            <button class="control-btn active" data-pay-period="30d">Last 30 days</button>
+                            <button class="control-btn" data-pay-period="3m">Last 3 months</button>
+                            <button class="control-btn" data-pay-period="custom">Custom</button>
+                        </div>
+                    </div>
+                    <div class="control-row custom-period-inputs" id="pay-custom-period">
+                        <span class="control-label">📅 Даты:</span>
+                        <input type="date" class="date-input" id="pay-date-from" />
+                        <span>→</span>
+                        <input type="date" class="date-input" id="pay-date-to" />
+                        <button class="control-btn" id="apply-pay-custom-period">Применить</button>
+                    </div>
+                </div>
+                <div class="chart-container"><canvas id="paymentChart"></canvas></div>
+            </div>
+
+            <!-- ====== СЕКЦИЯ UTM ====== -->
+            <div class="charts-section">
+                <h2>🔗 UTM источники — сквозная аналитика</h2>
+                <div style="overflow-x: auto;">
+                    <table class="retention-table" id="utm-table">
+                        <thead>
+                            <tr>
+                                <th>Источник</th>
+                                <th>Регистрации</th>
+                                <th>Вернулись</th>
+                                <th>Добавили растение</th>
+                                <th>Полили</th>
+                                <th>Оплатили</th>
+                                <th>Выручка</th>
+                                <th>Conv→Plant</th>
+                                <th>Conv→Pay</th>
+                                <th>ARPU</th>
+                                <th>ARPPU</th>
+                            </tr>
+                        </thead>
+                        <tbody id="utm-table-body">
+                            <tr><td colspan="11" style="text-align: center; padding: 20px;">Загрузка...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <div class="charts-section">
                 <h2>🎯 Воронка пользователей</h2>
                 <div class="control-panel">
@@ -365,6 +462,10 @@
         let currentFunnelPeriod = '7d';
         let customFunnelDateFrom = null;
         let customFunnelDateTo = null;
+        let currentPayGranularity = 'day';
+        let currentPayPeriod = '30d';
+        let customPayDateFrom = null;
+        let customPayDateTo = null;
 
         const retentionDescriptions = {
             classic: { title: 'Classic Retention', description: 'Измеряет любую активность пользователя (last_activity) через N дней/недель/месяцев после регистрации' },
@@ -446,12 +547,15 @@
                     document.getElementById('growing-completed').textContent = additionalData.growing.completed;
                     document.getElementById('total-plants').textContent = additionalData.plants.total;
                     document.getElementById('avg-plants').textContent = additionalData.plants.avg_per_user;
-                    const topPlantsHtml = additionalData.top_plants.map((plant, index) => 
+                    const topPlantsHtml = additionalData.top_plants.map((plant, index) =>
                         `<div class="day-stats-item"><span>${index + 1}. ${plant.name}</span><strong>${plant.count} шт.</strong></div>`
                     ).join('');
                     document.getElementById('top-plants-list').innerHTML = topPlantsHtml || '<p style="padding: 10px; text-align: center;">Нет данных</p>';
                 }
 
+                await loadPaymentStats();
+                await loadPaymentTimeseries();
+                await loadUtmStats();
                 await loadFunnelData();
                 await loadTimeseriesData();
                 await loadActionsPerUserData();
@@ -467,11 +571,105 @@
             }
         }
 
+        // === PAYMENT FUNCTIONS ===
+
+        async function loadPaymentStats() {
+            try {
+                const response = await fetch('/api/stats/payments');
+                if (!response.ok) return;
+                const data = await response.json();
+                document.getElementById('total-revenue').textContent = data.total_revenue.toLocaleString() + '₽';
+                document.getElementById('revenue-today').textContent = data.today.revenue.toLocaleString();
+                document.getElementById('total-payments-count').textContent = data.total_payments;
+                document.getElementById('payments-week').textContent = data.week.payments;
+                document.getElementById('avg-check').textContent = data.avg_check + '₽';
+                document.getElementById('unique-payers').textContent = data.unique_payers;
+                document.getElementById('active-subs').textContent = data.active_subscriptions;
+                document.getElementById('auto-pay-subs').textContent = data.auto_pay_subscriptions;
+                document.getElementById('payment-conversion').textContent = data.conversion_rate + '%';
+                document.getElementById('recurring-count').textContent = data.recurring_payments;
+                document.getElementById('revenue-month').textContent = data.month.revenue.toLocaleString() + '₽';
+            } catch (error) {
+                console.error('Ошибка загрузки payment stats:', error);
+            }
+        }
+
+        async function loadPaymentTimeseries() {
+            try {
+                const dates = calculatePeriodDates(currentPayPeriod, customPayDateFrom, customPayDateTo);
+                if (!dates) return;
+                const response = await fetch(`/api/stats/payments/timeseries?granularity=${currentPayGranularity}&date_from=${dates.from}&date_to=${dates.to}`);
+                if (!response.ok) return;
+                const data = await response.json();
+                updatePaymentChart(data);
+            } catch (error) {
+                console.error('Ошибка загрузки payment timeseries:', error);
+            }
+        }
+
+        function updatePaymentChart(data) {
+            const canvas = document.getElementById('paymentChart');
+            const existingChart = Chart.getChart('paymentChart');
+            if (existingChart) existingChart.destroy();
+            if (!data.data || data.data.length === 0) return;
+            new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: data.data.map(d => d.label),
+                    datasets: [
+                        { label: 'Выручка (₽)', data: data.data.map(d => d.revenue), backgroundColor: 'rgba(76, 175, 80, 0.7)', borderColor: 'rgb(76, 175, 80)', borderWidth: 1, yAxisID: 'y' },
+                        { label: 'Новые подписки', data: data.data.map(d => d.new_subscriptions), type: 'line', borderColor: '#667eea', backgroundColor: 'rgba(102, 126, 234, 0.1)', tension: 0.4, yAxisID: 'y1' },
+                        { label: 'Продления', data: data.data.map(d => d.renewals), type: 'line', borderColor: '#ff9800', backgroundColor: 'rgba(255, 152, 0, 0.1)', tension: 0.4, yAxisID: 'y1' }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'bottom' }, title: { display: true, text: `Выручка (${data.granularity === 'day' ? 'по дням' : data.granularity === 'week' ? 'по неделям' : 'по месяцам'})` } },
+                    scales: {
+                        y: { type: 'linear', display: true, position: 'left', beginAtZero: true, ticks: { callback: function(value) { return value.toLocaleString() + '₽'; } } },
+                        y1: { type: 'linear', display: true, position: 'right', beginAtZero: true, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+
+        async function loadUtmStats() {
+            try {
+                const response = await fetch('/api/stats/utm');
+                if (!response.ok) return;
+                const data = await response.json();
+                const tbody = document.getElementById('utm-table-body');
+                if (data.sources && data.sources.length > 0) {
+                    tbody.innerHTML = data.sources.map(src => {
+                        const payClass = src.paid > 0 ? 'retention-high' : '';
+                        return `<tr>
+                            <td><strong>${src.source}</strong></td>
+                            <td>${src.registered}</td>
+                            <td>${src.returned}</td>
+                            <td>${src.added_plant}</td>
+                            <td>${src.watered}</td>
+                            <td class="${payClass}">${src.paid}</td>
+                            <td><strong>${src.revenue.toLocaleString()}₽</strong></td>
+                            <td>${src.conversion_to_plant}%</td>
+                            <td>${src.conversion_to_payment}%</td>
+                            <td>${src.arpu}₽</td>
+                            <td>${src.arppu}₽</td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 20px;">Нет данных по UTM</td></tr>';
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки UTM:', error);
+            }
+        }
+
+        // === FUNNEL FUNCTIONS ===
+
         async function loadFunnelData() {
             try {
                 const dates = calculatePeriodDates(currentFunnelPeriod, customFunnelDateFrom, customFunnelDateTo);
                 if (!dates) return;
-                
                 const response = await fetch(`/api/stats/funnel?granularity=${currentFunnelGranularity}&date_from=${dates.from}&date_to=${dates.to}`);
                 if (!response.ok) throw new Error('Ошибка загрузки funnel данных');
                 const data = await response.json();
@@ -486,121 +684,22 @@
             const canvas = document.getElementById('funnelChart');
             const existingChart = Chart.getChart('funnelChart');
             if (existingChart) existingChart.destroy();
-            
             if (!data.data || data.data.length === 0) return;
-
-            // Агрегируем данные за весь период
-            const aggregated = {
-                opened_bot: 0,
-                added_plant: 0,
-                watered: 0,
-                asked_question: 0,
-                active_14days: 0
-            };
-
-            data.data.forEach(point => {
-                aggregated.opened_bot += point.opened_bot.count;
-                aggregated.added_plant += point.added_plant.count;
-                aggregated.watered += point.watered.count;
-                aggregated.asked_question += point.asked_question.count;
-                aggregated.active_14days += point.active_14days.count;
-            });
-
-            const funnelData = [
-                aggregated.opened_bot,
-                aggregated.added_plant,
-                aggregated.watered,
-                aggregated.asked_question,
-                aggregated.active_14days
-            ];
-
-            const labels = [
-                'Открыли бота',
-                'Добавили растение',
-                'Полили растение',
-                'Задали вопрос AI',
-                'Активны в первые 14 дней'
-            ];
-
+            const aggregated = { opened_bot: 0, added_plant: 0, watered: 0, asked_question: 0, active_14days: 0 };
+            data.data.forEach(point => { aggregated.opened_bot += point.opened_bot.count; aggregated.added_plant += point.added_plant.count; aggregated.watered += point.watered.count; aggregated.asked_question += point.asked_question.count; aggregated.active_14days += point.active_14days.count; });
+            const funnelData = [aggregated.opened_bot, aggregated.added_plant, aggregated.watered, aggregated.asked_question, aggregated.active_14days];
+            const labels = ['Открыли бота', 'Добавили растение', 'Полили растение', 'Задали вопрос AI', 'Активны в первые 14 дней'];
             new Chart(canvas.getContext('2d'), {
                 type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Количество пользователей',
-                        data: funnelData,
-                        backgroundColor: [
-                            'rgba(102, 126, 234, 0.8)',
-                            'rgba(76, 175, 80, 0.8)',
-                            'rgba(255, 152, 0, 0.8)',
-                            'rgba(233, 30, 99, 0.8)',
-                            'rgba(33, 150, 243, 0.8)'
-                        ],
-                        borderColor: [
-                            'rgb(102, 126, 234)',
-                            'rgb(76, 175, 80)',
-                            'rgb(255, 152, 0)',
-                            'rgb(233, 30, 99)',
-                            'rgb(33, 150, 243)'
-                        ],
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    indexAxis: 'y',
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        title: { 
-                            display: true, 
-                            text: `Воронка пользователей (${data.granularity === 'day' ? 'дни' : data.granularity === 'week' ? 'недели' : 'месяцы'}: ${data.date_from} - ${data.date_to})`,
-                            font: { size: 16 }
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    const value = context.parsed.x;
-                                    const percent = aggregated.opened_bot > 0 ? ((value / aggregated.opened_bot) * 100).toFixed(1) : 0;
-                                    return `${value} чел. (${percent}%)`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toLocaleString();
-                                }
-                            }
-                        }
-                    }
-                }
+                data: { labels: labels, datasets: [{ label: 'Количество пользователей', data: funnelData, backgroundColor: ['rgba(102, 126, 234, 0.8)', 'rgba(76, 175, 80, 0.8)', 'rgba(255, 152, 0, 0.8)', 'rgba(233, 30, 99, 0.8)', 'rgba(33, 150, 243, 0.8)'], borderColor: ['rgb(102, 126, 234)', 'rgb(76, 175, 80)', 'rgb(255, 152, 0)', 'rgb(233, 30, 99)', 'rgb(33, 150, 243)'], borderWidth: 2 }] },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: `Воронка пользователей (${data.granularity === 'day' ? 'дни' : data.granularity === 'week' ? 'недели' : 'месяцы'}: ${data.date_from} - ${data.date_to})`, font: { size: 16 } }, tooltip: { callbacks: { label: function(context) { const value = context.parsed.x; const percent = aggregated.opened_bot > 0 ? ((value / aggregated.opened_bot) * 100).toFixed(1) : 0; return `${value} чел. (${percent}%)`; } } } }, scales: { x: { beginAtZero: true, ticks: { callback: function(value) { return value.toLocaleString(); } } } } }
             });
         }
 
         function updateFunnelTable(data) {
             if (!data.data || data.data.length === 0) return;
-
-            // Агрегируем данные за весь период
-            const aggregated = {
-                opened_bot: 0,
-                added_plant: 0,
-                watered: 0,
-                asked_question: 0,
-                active_14days: 0
-            };
-
-            data.data.forEach(point => {
-                aggregated.opened_bot += point.opened_bot.count;
-                aggregated.added_plant += point.added_plant.count;
-                aggregated.watered += point.watered.count;
-                aggregated.asked_question += point.asked_question.count;
-                aggregated.active_14days += point.active_14days.count;
-            });
-
+            const aggregated = { opened_bot: 0, added_plant: 0, watered: 0, asked_question: 0, active_14days: 0 };
+            data.data.forEach(point => { aggregated.opened_bot += point.opened_bot.count; aggregated.added_plant += point.added_plant.count; aggregated.watered += point.watered.count; aggregated.asked_question += point.asked_question.count; aggregated.active_14days += point.active_14days.count; });
             const stages = [
                 { key: 'opened_bot', name: 'Открыли бота', count: aggregated.opened_bot },
                 { key: 'added_plant', name: 'Добавили растение', count: aggregated.added_plant },
@@ -608,135 +707,44 @@
                 { key: 'asked_question', name: 'Задали вопрос AI', count: aggregated.asked_question },
                 { key: 'active_14days', name: 'Активны 14 дней', count: aggregated.active_14days }
             ];
-
-            // Рассчитываем конверсии между этапами
             const conversions = [];
-            for (let i = 1; i < stages.length - 1; i++) {
-                const prevCount = stages[i - 1].count;
-                const currentCount = stages[i].count;
-                conversions.push(prevCount > 0 ? currentCount / prevCount : 0);
-            }
-
+            for (let i = 1; i < stages.length - 1; i++) { const prevCount = stages[i - 1].count; const currentCount = stages[i].count; conversions.push(prevCount > 0 ? currentCount / prevCount : 0); }
             const tbody = document.getElementById('funnel-table-body');
             let html = '';
-
-            // Строка с названиями этапов
-            html += '<tr><td><strong>Этап</strong></td>';
-            stages.forEach(stage => {
-                html += `<td><strong>${stage.name}</strong></td>`;
-            });
-            html += '</tr>';
-
-            // Строка со значениями (текущие)
-            html += '<tr><td><strong>Значение</strong></td>';
-            stages.forEach(stage => {
-                html += `<td>${stage.count.toLocaleString()}</td>`;
-            });
-            html += '</tr>';
-
-            // Строка с процентами (текущие)
-            html += '<tr><td><strong>Процент</strong></td>';
-            stages.forEach(stage => {
-                const percent = aggregated.opened_bot > 0 ? ((stage.count / aggregated.opened_bot) * 100).toFixed(1) : 0;
-                html += `<td>${percent}%</td>`;
-            });
-            html += '</tr>';
-
-            // Строка со значениями (редактируемые)
-            html += '<tr class="editable-row"><td><strong>Значение (ввод)</strong></td>';
-            stages.forEach((stage, index) => {
-                html += `<td><input type="number" class="funnel-value-input" data-index="${index}" value="${stage.count}" min="0" /></td>`;
-            });
-            html += '</tr>';
-
-            // Строка с процентами (редактируемые)
-            html += '<tr class="editable-row"><td><strong>Процент (ввод)</strong></td>';
-            stages.forEach((stage, index) => {
-                const percent = aggregated.opened_bot > 0 ? ((stage.count / aggregated.opened_bot) * 100).toFixed(1) : 0;
-                html += `<td><input type="number" class="funnel-percent-input" data-index="${index}" value="${percent}" min="0" max="100" step="0.1" /></td>`;
-            });
-            html += '</tr>';
-
+            html += '<tr><td><strong>Этап</strong></td>'; stages.forEach(stage => { html += `<td><strong>${stage.name}</strong></td>`; }); html += '</tr>';
+            html += '<tr><td><strong>Значение</strong></td>'; stages.forEach(stage => { html += `<td>${stage.count.toLocaleString()}</td>`; }); html += '</tr>';
+            html += '<tr><td><strong>Процент</strong></td>'; stages.forEach(stage => { const percent = aggregated.opened_bot > 0 ? ((stage.count / aggregated.opened_bot) * 100).toFixed(1) : 0; html += `<td>${percent}%</td>`; }); html += '</tr>';
+            html += '<tr class="editable-row"><td><strong>Значение (ввод)</strong></td>'; stages.forEach((stage, index) => { html += `<td><input type="number" class="funnel-value-input" data-index="${index}" value="${stage.count}" min="0" /></td>`; }); html += '</tr>';
+            html += '<tr class="editable-row"><td><strong>Процент (ввод)</strong></td>'; stages.forEach((stage, index) => { const percent = aggregated.opened_bot > 0 ? ((stage.count / aggregated.opened_bot) * 100).toFixed(1) : 0; html += `<td><input type="number" class="funnel-percent-input" data-index="${index}" value="${percent}" min="0" max="100" step="0.1" /></td>`; }); html += '</tr>';
             tbody.innerHTML = html;
-
-            // Сохраняем данные для расчетов
-            window.funnelData = {
-                stages: stages,
-                conversions: conversions,
-                baseCount: aggregated.opened_bot
-            };
-
-            // Добавляем обработчики изменений
+            window.funnelData = { stages: stages, conversions: conversions, baseCount: aggregated.opened_bot };
             attachFunnelInputHandlers();
         }
 
         function attachFunnelInputHandlers() {
-            // Обработчик для изменения процентов
-            document.querySelectorAll('.funnel-percent-input').forEach(input => {
-                input.addEventListener('input', function() {
-                    const index = parseInt(this.dataset.index);
-                    const newPercent = parseFloat(this.value) || 0;
-                    recalculateFunnelFromPercent(index, newPercent);
-                });
-            });
-
-            // Обработчик для изменения значений
-            document.querySelectorAll('.funnel-value-input').forEach(input => {
-                input.addEventListener('input', function() {
-                    const index = parseInt(this.dataset.index);
-                    const newValue = parseInt(this.value) || 0;
-                    recalculateFunnelFromValue(index, newValue);
-                });
-            });
+            document.querySelectorAll('.funnel-percent-input').forEach(input => { input.addEventListener('input', function() { const index = parseInt(this.dataset.index); const newPercent = parseFloat(this.value) || 0; recalculateFunnelFromPercent(index, newPercent); }); });
+            document.querySelectorAll('.funnel-value-input').forEach(input => { input.addEventListener('input', function() { const index = parseInt(this.dataset.index); const newValue = parseInt(this.value) || 0; recalculateFunnelFromValue(index, newValue); }); });
         }
 
         function recalculateFunnelFromPercent(changedIndex, newPercent) {
             const { baseCount, conversions } = window.funnelData;
             const valueInputs = document.querySelectorAll('.funnel-value-input');
             const percentInputs = document.querySelectorAll('.funnel-percent-input');
-
-            // Рассчитываем новое значение из процента
             const newValue = Math.round((newPercent / 100) * baseCount);
             valueInputs[changedIndex].value = newValue;
-
-            // Пересчитываем все этапы ниже с сохранением конверсий
-            if (changedIndex < conversions.length) {
-                let prevValue = newValue;
-                for (let i = changedIndex; i < conversions.length; i++) {
-                    const nextValue = Math.round(prevValue * conversions[i]);
-                    valueInputs[i + 1].value = nextValue;
-                    
-                    const nextPercent = baseCount > 0 ? ((nextValue / baseCount) * 100).toFixed(1) : 0;
-                    percentInputs[i + 1].value = nextPercent;
-                    
-                    prevValue = nextValue;
-                }
-            }
+            if (changedIndex < conversions.length) { let prevValue = newValue; for (let i = changedIndex; i < conversions.length; i++) { const nextValue = Math.round(prevValue * conversions[i]); valueInputs[i + 1].value = nextValue; const nextPercent = baseCount > 0 ? ((nextValue / baseCount) * 100).toFixed(1) : 0; percentInputs[i + 1].value = nextPercent; prevValue = nextValue; } }
         }
 
         function recalculateFunnelFromValue(changedIndex, newValue) {
             const { baseCount, conversions } = window.funnelData;
             const valueInputs = document.querySelectorAll('.funnel-value-input');
             const percentInputs = document.querySelectorAll('.funnel-percent-input');
-
-            // Обновляем процент для измененного значения
             const newPercent = baseCount > 0 ? ((newValue / baseCount) * 100).toFixed(1) : 0;
             percentInputs[changedIndex].value = newPercent;
-
-            // Пересчитываем все этапы ниже с сохранением конверсий
-            if (changedIndex < conversions.length) {
-                let prevValue = newValue;
-                for (let i = changedIndex; i < conversions.length; i++) {
-                    const nextValue = Math.round(prevValue * conversions[i]);
-                    valueInputs[i + 1].value = nextValue;
-                    
-                    const nextPercent = baseCount > 0 ? ((nextValue / baseCount) * 100).toFixed(1) : 0;
-                    percentInputs[i + 1].value = nextPercent;
-                    
-                    prevValue = nextValue;
-                }
-            }
+            if (changedIndex < conversions.length) { let prevValue = newValue; for (let i = changedIndex; i < conversions.length; i++) { const nextValue = Math.round(prevValue * conversions[i]); valueInputs[i + 1].value = nextValue; const nextPercent = baseCount > 0 ? ((nextValue / baseCount) * 100).toFixed(1) : 0; percentInputs[i + 1].value = nextPercent; prevValue = nextValue; } }
         }
+
+        // === TIMESERIES FUNCTIONS ===
 
         async function loadTimeseriesData() {
             try {
@@ -746,9 +754,7 @@
                 if (!response.ok) throw new Error('Ошибка загрузки timeseries данных');
                 const data = await response.json();
                 updateTimeseriesChart(data);
-            } catch (error) {
-                console.error('Ошибка загрузки timeseries:', error);
-            }
+            } catch (error) { console.error('Ошибка загрузки timeseries:', error); }
         }
 
         function updateTimeseriesChart(data) {
@@ -756,32 +762,22 @@
             const existingChart = Chart.getChart('timeseriesChart');
             if (existingChart) existingChart.destroy();
             if (!data.data || data.data.length === 0) return;
-
             new Chart(canvas.getContext('2d'), {
                 type: 'line',
-                data: {
-                    labels: data.data.map(d => d.label),
-                    datasets: [
-                        { label: 'Новые пользователи', data: data.data.map(d => d.new_users), borderColor: '#667eea', backgroundColor: 'rgba(102, 126, 234, 0.1)', tension: 0.4 },
-                        { label: 'Поливы', data: data.data.map(d => d.watered), borderColor: '#4caf50', backgroundColor: 'rgba(76, 175, 80, 0.1)', tension: 0.4 },
-                        { label: 'Добавили растение', data: data.data.map(d => d.added_plants), borderColor: '#ff9800', backgroundColor: 'rgba(255, 152, 0, 0.1)', tension: 0.4 },
-                        { label: 'Добавили рост с нуля', data: data.data.map(d => d.added_growing), borderColor: '#9c27b0', backgroundColor: 'rgba(156, 39, 176, 0.1)', tension: 0.4 },
-                        { label: 'Задали вопрос', data: data.data.map(d => d.asked_question), borderColor: '#e91e63', backgroundColor: 'rgba(233, 30, 99, 0.1)', tension: 0.4 },
-                        { label: 'Оставили отзыв', data: data.data.map(d => d.left_feedback), borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.1)', tension: 0.4 },
-                        { label: 'Открыли бота', data: data.data.map(d => d.opened_bot), borderColor: '#2196F3', backgroundColor: 'rgba(33, 150, 243, 0.1)', tension: 0.4 }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: true, position: 'bottom' },
-                        title: { display: true, text: `Активность (${data.granularity === 'day' ? 'по дням' : data.granularity === 'week' ? 'по неделям' : 'по месяцам'})` }
-                    },
-                    scales: { y: { beginAtZero: true } }
-                }
+                data: { labels: data.data.map(d => d.label), datasets: [
+                    { label: 'Новые пользователи', data: data.data.map(d => d.new_users), borderColor: '#667eea', backgroundColor: 'rgba(102, 126, 234, 0.1)', tension: 0.4 },
+                    { label: 'Поливы', data: data.data.map(d => d.watered), borderColor: '#4caf50', backgroundColor: 'rgba(76, 175, 80, 0.1)', tension: 0.4 },
+                    { label: 'Добавили растение', data: data.data.map(d => d.added_plants), borderColor: '#ff9800', backgroundColor: 'rgba(255, 152, 0, 0.1)', tension: 0.4 },
+                    { label: 'Добавили рост с нуля', data: data.data.map(d => d.added_growing), borderColor: '#9c27b0', backgroundColor: 'rgba(156, 39, 176, 0.1)', tension: 0.4 },
+                    { label: 'Задали вопрос', data: data.data.map(d => d.asked_question), borderColor: '#e91e63', backgroundColor: 'rgba(233, 30, 99, 0.1)', tension: 0.4 },
+                    { label: 'Оставили отзыв', data: data.data.map(d => d.left_feedback), borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.1)', tension: 0.4 },
+                    { label: 'Открыли бота', data: data.data.map(d => d.opened_bot), borderColor: '#2196F3', backgroundColor: 'rgba(33, 150, 243, 0.1)', tension: 0.4 }
+                ] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'bottom' }, title: { display: true, text: `Активность (${data.granularity === 'day' ? 'по дням' : data.granularity === 'week' ? 'по неделям' : 'по месяцам'})` } }, scales: { y: { beginAtZero: true } } }
             });
         }
+
+        // === ACTIONS PER USER ===
 
         async function loadActionsPerUserData() {
             try {
@@ -791,9 +787,7 @@
                 if (!response.ok) throw new Error('Ошибка загрузки actions-per-user данных');
                 const data = await response.json();
                 updateActionsPerUserChart(data);
-            } catch (error) {
-                console.error('Ошибка загрузки actions-per-user:', error);
-            }
+            } catch (error) { console.error('Ошибка загрузки actions-per-user:', error); }
         }
 
         function updateActionsPerUserChart(data) {
@@ -801,61 +795,35 @@
             const existingChart = Chart.getChart('actionsPerUserChart');
             if (existingChart) existingChart.destroy();
             if (!data.data || data.data.length === 0) return;
-
             new Chart(canvas.getContext('2d'), {
                 type: 'line',
-                data: {
-                    labels: data.data.map(d => d.label),
-                    datasets: [
-                        { label: 'Поливы на пользователя', data: data.data.map(d => d.watered_per_user), borderColor: '#4caf50', backgroundColor: 'rgba(76, 175, 80, 0.1)', tension: 0.4 },
-                        { label: 'Добавил растение', data: data.data.map(d => d.added_plants_per_user), borderColor: '#ff9800', backgroundColor: 'rgba(255, 152, 0, 0.1)', tension: 0.4 },
-                        { label: 'Рост с нуля', data: data.data.map(d => d.added_growing_per_user), borderColor: '#9c27b0', backgroundColor: 'rgba(156, 39, 176, 0.1)', tension: 0.4 },
-                        { label: 'Задал вопрос', data: data.data.map(d => d.asked_question_per_user), borderColor: '#e91e63', backgroundColor: 'rgba(233, 30, 99, 0.1)', tension: 0.4 },
-                        { label: 'Оставил отзыв', data: data.data.map(d => d.left_feedback_per_user), borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.1)', tension: 0.4 },
-                        { label: 'Растений на пользователя', data: data.data.map(d => d.plants_per_user), borderColor: '#00bcd4', backgroundColor: 'rgba(0, 188, 212, 0.1)', tension: 0.4, borderWidth: 3 }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: true, position: 'bottom' },
-                        title: { display: true, text: `Действия на пользователя (${data.granularity === 'day' ? 'по дням' : data.granularity === 'week' ? 'по неделям' : 'по месяцам'})` }
-                    },
-                    scales: { y: { beginAtZero: true } }
-                }
+                data: { labels: data.data.map(d => d.label), datasets: [
+                    { label: 'Поливы на пользователя', data: data.data.map(d => d.watered_per_user), borderColor: '#4caf50', backgroundColor: 'rgba(76, 175, 80, 0.1)', tension: 0.4 },
+                    { label: 'Добавил растение', data: data.data.map(d => d.added_plants_per_user), borderColor: '#ff9800', backgroundColor: 'rgba(255, 152, 0, 0.1)', tension: 0.4 },
+                    { label: 'Рост с нуля', data: data.data.map(d => d.added_growing_per_user), borderColor: '#9c27b0', backgroundColor: 'rgba(156, 39, 176, 0.1)', tension: 0.4 },
+                    { label: 'Задал вопрос', data: data.data.map(d => d.asked_question_per_user), borderColor: '#e91e63', backgroundColor: 'rgba(233, 30, 99, 0.1)', tension: 0.4 },
+                    { label: 'Оставил отзыв', data: data.data.map(d => d.left_feedback_per_user), borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.1)', tension: 0.4 },
+                    { label: 'Растений на пользователя', data: data.data.map(d => d.plants_per_user), borderColor: '#00bcd4', backgroundColor: 'rgba(0, 188, 212, 0.1)', tension: 0.4, borderWidth: 3 }
+                ] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'bottom' }, title: { display: true, text: `Действия на пользователя (${data.granularity === 'day' ? 'по дням' : data.granularity === 'week' ? 'по неделям' : 'по месяцам'})` } }, scales: { y: { beginAtZero: true } } }
             });
         }
+
+        // === RETENTION ===
 
         async function loadRetentionData() {
             try {
                 const response = await fetch(`/api/stats/retention-flexible?retention_type=${currentRetentionType}&granularity=${currentRetentionGranularity}&period=${currentRetentionPeriod}`);
                 if (!response.ok) throw new Error('Ошибка загрузки retention данных');
                 const data = await response.json();
-                
                 const info = retentionDescriptions[data.retention_type];
                 document.getElementById('retention-info').innerHTML = `<h4>${info.title}</h4><p>${info.description}</p>`;
-
                 const tbody = document.getElementById('retention-table-body');
                 if (data.cohorts && data.cohorts.length > 0) {
-                    tbody.innerHTML = data.cohorts.map(cohort => {
-                        const colorClass = getRetentionColor(cohort.retention_percent);
-                        return `<tr>
-                            <td>${cohort.cohort_label}</td>
-                            <td>${cohort.target_label}</td>
-                            <td>${cohort.registered}</td>
-                            <td>${cohort.returned}</td>
-                            <td class="retention-percent-cell ${colorClass}">${cohort.retention_percent}%</td>
-                        </tr>`;
-                    }).join('');
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">Нет данных</td></tr>';
-                }
-
+                    tbody.innerHTML = data.cohorts.map(cohort => { const colorClass = getRetentionColor(cohort.retention_percent); return `<tr><td>${cohort.cohort_label}</td><td>${cohort.target_label}</td><td>${cohort.registered}</td><td>${cohort.returned}</td><td class="retention-percent-cell ${colorClass}">${cohort.retention_percent}%</td></tr>`; }).join('');
+                } else { tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">Нет данных</td></tr>'; }
                 updateRetentionChart(data);
-            } catch (error) {
-                console.error('Ошибка загрузки retention:', error);
-            }
+            } catch (error) { console.error('Ошибка загрузки retention:', error); }
         }
 
         function updateRetentionChart(data) {
@@ -863,211 +831,61 @@
             const existingChart = Chart.getChart('retentionChart');
             if (existingChart) existingChart.destroy();
             if (!data.cohorts || data.cohorts.length === 0) return;
-
             const cohorts = data.cohorts.slice(0, 15).reverse();
             new Chart(canvas.getContext('2d'), {
                 type: 'line',
-                data: {
-                    labels: cohorts.map(c => c.cohort_label),
-                    datasets: [{
-                        label: 'Retention %',
-                        data: cohorts.map(c => c.retention_percent),
-                        borderColor: '#667eea',
-                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: true, position: 'bottom' },
-                        title: { display: true, text: `${retentionDescriptions[data.retention_type].title} - ${data.granularity} ${data.period}` }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            max: 100,
-                            ticks: { callback: function(value) { return value + '%'; } }
-                        }
-                    }
-                }
+                data: { labels: cohorts.map(c => c.cohort_label), datasets: [{ label: 'Retention %', data: cohorts.map(c => c.retention_percent), borderColor: '#667eea', backgroundColor: 'rgba(102, 126, 234, 0.1)', tension: 0.4, fill: true }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'bottom' }, title: { display: true, text: `${retentionDescriptions[data.retention_type].title} - ${data.granularity} ${data.period}` } }, scales: { y: { beginAtZero: true, max: 100, ticks: { callback: function(value) { return value + '%'; } } } } }
             });
         }
 
-        // Event handlers для воронки
-        document.querySelectorAll('[data-funnel-granularity]').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('[data-funnel-granularity]').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentFunnelGranularity = this.dataset.funnelGranularity;
-                loadFunnelData();
-            });
-        });
+        // === EVENT HANDLERS ===
 
-        document.querySelectorAll('[data-funnel-period]').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('[data-funnel-period]').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentFunnelPeriod = this.dataset.funnelPeriod;
-                if (currentFunnelPeriod === 'custom') {
-                    document.getElementById('funnel-custom-period').classList.add('active');
-                } else {
-                    document.getElementById('funnel-custom-period').classList.remove('active');
-                    loadFunnelData();
-                }
-            });
+        // Payment chart handlers
+        document.querySelectorAll('[data-pay-granularity]').forEach(btn => {
+            btn.addEventListener('click', function() { document.querySelectorAll('[data-pay-granularity]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentPayGranularity = this.dataset.payGranularity; loadPaymentTimeseries(); });
         });
-
-        document.getElementById('apply-funnel-custom-period').addEventListener('click', function() {
-            customFunnelDateFrom = document.getElementById('funnel-date-from').value;
-            customFunnelDateTo = document.getElementById('funnel-date-to').value;
-            if (customFunnelDateFrom && customFunnelDateTo) {
-                loadFunnelData();
-            } else {
-                alert('Пожалуйста, выберите обе даты');
-            }
+        document.querySelectorAll('[data-pay-period]').forEach(btn => {
+            btn.addEventListener('click', function() { document.querySelectorAll('[data-pay-period]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentPayPeriod = this.dataset.payPeriod; if (currentPayPeriod === 'custom') { document.getElementById('pay-custom-period').classList.add('active'); } else { document.getElementById('pay-custom-period').classList.remove('active'); loadPaymentTimeseries(); } });
         });
+        document.getElementById('apply-pay-custom-period').addEventListener('click', function() { customPayDateFrom = document.getElementById('pay-date-from').value; customPayDateTo = document.getElementById('pay-date-to').value; if (customPayDateFrom && customPayDateTo) { loadPaymentTimeseries(); } else { alert('Пожалуйста, выберите обе даты'); } });
 
-        // Event handlers
-        document.querySelectorAll('[data-granularity]').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('[data-granularity]').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentGranularity = this.dataset.granularity;
-                loadTimeseriesData();
-            });
-        });
+        // Funnel handlers
+        document.querySelectorAll('[data-funnel-granularity]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-funnel-granularity]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentFunnelGranularity = this.dataset.funnelGranularity; loadFunnelData(); }); });
+        document.querySelectorAll('[data-funnel-period]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-funnel-period]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentFunnelPeriod = this.dataset.funnelPeriod; if (currentFunnelPeriod === 'custom') { document.getElementById('funnel-custom-period').classList.add('active'); } else { document.getElementById('funnel-custom-period').classList.remove('active'); loadFunnelData(); } }); });
+        document.getElementById('apply-funnel-custom-period').addEventListener('click', function() { customFunnelDateFrom = document.getElementById('funnel-date-from').value; customFunnelDateTo = document.getElementById('funnel-date-to').value; if (customFunnelDateFrom && customFunnelDateTo) { loadFunnelData(); } else { alert('Пожалуйста, выберите обе даты'); } });
 
-        document.querySelectorAll('[data-period]').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentPeriod = this.dataset.period;
-                if (currentPeriod === 'custom') {
-                    document.querySelector('.custom-period-inputs').classList.add('active');
-                } else {
-                    document.querySelector('.custom-period-inputs').classList.remove('active');
-                    loadTimeseriesData();
-                }
-            });
-        });
+        // Timeseries handlers
+        document.querySelectorAll('[data-granularity]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-granularity]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentGranularity = this.dataset.granularity; loadTimeseriesData(); }); });
+        document.querySelectorAll('[data-period]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentPeriod = this.dataset.period; if (currentPeriod === 'custom') { document.querySelector('.custom-period-inputs').classList.add('active'); } else { document.querySelector('.custom-period-inputs').classList.remove('active'); loadTimeseriesData(); } }); });
+        document.getElementById('apply-custom-period').addEventListener('click', function() { customDateFrom = document.getElementById('date-from').value; customDateTo = document.getElementById('date-to').value; if (customDateFrom && customDateTo) { loadTimeseriesData(); } else { alert('Пожалуйста, выберите обе даты'); } });
 
-        document.getElementById('apply-custom-period').addEventListener('click', function() {
-            customDateFrom = document.getElementById('date-from').value;
-            customDateTo = document.getElementById('date-to').value;
-            if (customDateFrom && customDateTo) {
-                loadTimeseriesData();
-            } else {
-                alert('Пожалуйста, выберите обе даты');
-            }
-        });
+        // Actions per user handlers
+        document.querySelectorAll('[data-per-user-granularity]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-per-user-granularity]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentPerUserGranularity = this.dataset.perUserGranularity; loadActionsPerUserData(); }); });
+        document.querySelectorAll('[data-per-user-period]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-per-user-period]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentPerUserPeriod = this.dataset.perUserPeriod; if (currentPerUserPeriod === 'custom') { document.getElementById('per-user-custom-period').classList.add('active'); } else { document.getElementById('per-user-custom-period').classList.remove('active'); loadActionsPerUserData(); } }); });
+        document.getElementById('apply-per-user-custom-period').addEventListener('click', function() { customPerUserDateFrom = document.getElementById('per-user-date-from').value; customPerUserDateTo = document.getElementById('per-user-date-to').value; if (customPerUserDateFrom && customPerUserDateTo) { loadActionsPerUserData(); } else { alert('Пожалуйста, выберите обе даты'); } });
 
-        // Event handlers для Actions Per User
-        document.querySelectorAll('[data-per-user-granularity]').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('[data-per-user-granularity]').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentPerUserGranularity = this.dataset.perUserGranularity;
-                loadActionsPerUserData();
-            });
-        });
-
-        document.querySelectorAll('[data-per-user-period]').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('[data-per-user-period]').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentPerUserPeriod = this.dataset.perUserPeriod;
-                
-                if (currentPerUserPeriod === 'custom') {
-                    document.getElementById('per-user-custom-period').classList.add('active');
-                } else {
-                    document.getElementById('per-user-custom-period').classList.remove('active');
-                    loadActionsPerUserData();
-                }
-            });
-        });
-
-        document.getElementById('apply-per-user-custom-period').addEventListener('click', function() {
-            customPerUserDateFrom = document.getElementById('per-user-date-from').value;
-            customPerUserDateTo = document.getElementById('per-user-date-to').value;
-            if (customPerUserDateFrom && customPerUserDateTo) {
-                loadActionsPerUserData();
-            } else {
-                alert('Пожалуйста, выберите обе даты');
-            }
-        });
-
-        document.querySelectorAll('[data-retention-type]').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('[data-retention-type]').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentRetentionType = this.dataset.retentionType;
-                loadRetentionData();
-            });
-        });
-
-        document.querySelectorAll('[data-retention-granularity]').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('[data-retention-granularity]').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                currentRetentionGranularity = this.dataset.retentionGranularity;
-                
-                // Update period unit label
-                const unit = currentRetentionGranularity === 'day' ? 'дней' : currentRetentionGranularity === 'week' ? 'недель' : 'месяцев';
-                document.getElementById('retention-period-unit').textContent = unit;
-                
-                // Update max value
-                const maxVal = currentRetentionGranularity === 'day' ? 365 : currentRetentionGranularity === 'week' ? 52 : 12;
-                document.getElementById('retention-custom-value').max = maxVal;
-                
-                loadRetentionData();
-            });
-        });
-
+        // Retention handlers
+        document.querySelectorAll('[data-retention-type]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-retention-type]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentRetentionType = this.dataset.retentionType; loadRetentionData(); }); });
+        document.querySelectorAll('[data-retention-granularity]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-retention-granularity]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentRetentionGranularity = this.dataset.retentionGranularity; const unit = currentRetentionGranularity === 'day' ? 'дней' : currentRetentionGranularity === 'week' ? 'недель' : 'месяцев'; document.getElementById('retention-period-unit').textContent = unit; const maxVal = currentRetentionGranularity === 'day' ? 365 : currentRetentionGranularity === 'week' ? 52 : 12; document.getElementById('retention-custom-value').max = maxVal; loadRetentionData(); }); });
         document.querySelectorAll('[data-retention-period]').forEach(btn => {
             btn.addEventListener('click', function() {
                 document.querySelectorAll('[data-retention-period]').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
                 const val = this.dataset.retentionPeriod;
-                
-                if (val === 'custom') {
-                    document.getElementById('retention-custom-period').classList.add('active');
-                } else {
+                if (val === 'custom') { document.getElementById('retention-custom-period').classList.add('active'); }
+                else {
                     document.getElementById('retention-custom-period').classList.remove('active');
-                    
-                    if (val === '1m') {
-                        currentRetentionGranularity = 'month';
-                        currentRetentionPeriod = 1;
-                        document.querySelectorAll('[data-retention-granularity]').forEach(b => b.classList.remove('active'));
-                        document.querySelector('[data-retention-granularity="month"]').classList.add('active');
-                    } else if (val === '3m') {
-                        currentRetentionGranularity = 'month';
-                        currentRetentionPeriod = 3;
-                        document.querySelectorAll('[data-retention-granularity]').forEach(b => b.classList.remove('active'));
-                        document.querySelector('[data-retention-granularity="month"]').classList.add('active');
-                    } else {
-                        currentRetentionGranularity = 'day';
-                        currentRetentionPeriod = parseInt(val);
-                        document.querySelectorAll('[data-retention-granularity]').forEach(b => b.classList.remove('active'));
-                        document.querySelector('[data-retention-granularity="day"]').classList.add('active');
-                    }
+                    if (val === '1m') { currentRetentionGranularity = 'month'; currentRetentionPeriod = 1; document.querySelectorAll('[data-retention-granularity]').forEach(b => b.classList.remove('active')); document.querySelector('[data-retention-granularity="month"]').classList.add('active'); }
+                    else if (val === '3m') { currentRetentionGranularity = 'month'; currentRetentionPeriod = 3; document.querySelectorAll('[data-retention-granularity]').forEach(b => b.classList.remove('active')); document.querySelector('[data-retention-granularity="month"]').classList.add('active'); }
+                    else { currentRetentionGranularity = 'day'; currentRetentionPeriod = parseInt(val); document.querySelectorAll('[data-retention-granularity]').forEach(b => b.classList.remove('active')); document.querySelector('[data-retention-granularity="day"]').classList.add('active'); }
                     loadRetentionData();
                 }
             });
         });
+        document.getElementById('apply-retention-custom').addEventListener('click', function() { const val = parseInt(document.getElementById('retention-custom-value').value); if (val > 0) { currentRetentionPeriod = val; loadRetentionData(); } else { alert('Введите корректное значение периода'); } });
 
-        document.getElementById('apply-retention-custom').addEventListener('click', function() {
-            const val = parseInt(document.getElementById('retention-custom-value').value);
-            if (val > 0) {
-                currentRetentionPeriod = val;
-                loadRetentionData();
-            } else {
-                alert('Введите корректное значение периода');
-            }
-        });
-
+        // === START ===
         loadStats();
         setInterval(loadStats, 30000);
     </script>
