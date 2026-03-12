@@ -340,7 +340,7 @@
                             <button class="control-btn" data-period="custom">Custom</button>
                         </div>
                     </div>
-                    <div class="control-row custom-period-inputs">
+                    <div class="control-row custom-period-inputs" id="timeseries-custom-period">
                         <span class="control-label">📅 Даты:</span>
                         <input type="date" class="date-input" id="date-from" />
                         <span>→</span>
@@ -857,7 +857,7 @@
 
         // Timeseries handlers
         document.querySelectorAll('[data-granularity]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-granularity]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentGranularity = this.dataset.granularity; loadTimeseriesData(); }); });
-        document.querySelectorAll('[data-period]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentPeriod = this.dataset.period; if (currentPeriod === 'custom') { document.querySelector('.custom-period-inputs').classList.add('active'); } else { document.querySelector('.custom-period-inputs').classList.remove('active'); loadTimeseriesData(); } }); });
+        document.querySelectorAll('[data-period]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentPeriod = this.dataset.period; if (currentPeriod === 'custom') { document.getElementById('timeseries-custom-period').classList.add('active'); } else { document.getElementById('timeseries-custom-period').classList.remove('active'); loadTimeseriesData(); } }); });
         document.getElementById('apply-custom-period').addEventListener('click', function() { customDateFrom = document.getElementById('date-from').value; customDateTo = document.getElementById('date-to').value; if (customDateFrom && customDateTo) { loadTimeseriesData(); } else { alert('Пожалуйста, выберите обе даты'); } });
 
         // Actions per user handlers
