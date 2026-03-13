@@ -326,18 +326,18 @@
                     <div class="control-row">
                         <span class="control-label">📊 Гранулярность:</span>
                         <div class="button-group">
-                            <button class="control-btn active" data-granularity="day">📅 День</button>
-                            <button class="control-btn" data-granularity="week">📊 Неделя</button>
-                            <button class="control-btn" data-granularity="month">📆 Месяц</button>
+                            <button class="control-btn active" data-ts-granularity="day">📅 День</button>
+                            <button class="control-btn" data-ts-granularity="week">📊 Неделя</button>
+                            <button class="control-btn" data-ts-granularity="month">📆 Месяц</button>
                         </div>
                     </div>
                     <div class="control-row">
                         <span class="control-label">⏱️ Период:</span>
                         <div class="button-group">
-                            <button class="control-btn active" data-period="7d">Last 7 days</button>
-                            <button class="control-btn" data-period="30d">Last 30 days</button>
-                            <button class="control-btn" data-period="3m">Last 3 months</button>
-                            <button class="control-btn" data-period="custom">Custom</button>
+                            <button class="control-btn active" data-ts-period="7d">Last 7 days</button>
+                            <button class="control-btn" data-ts-period="30d">Last 30 days</button>
+                            <button class="control-btn" data-ts-period="3m">Last 3 months</button>
+                            <button class="control-btn" data-ts-period="custom">Custom</button>
                         </div>
                     </div>
                     <div class="control-row custom-period-inputs" id="timeseries-custom-period">
@@ -856,8 +856,8 @@
         document.getElementById('apply-funnel-custom-period').addEventListener('click', function() { customFunnelDateFrom = document.getElementById('funnel-date-from').value; customFunnelDateTo = document.getElementById('funnel-date-to').value; if (customFunnelDateFrom && customFunnelDateTo) { loadFunnelData(); } else { alert('Пожалуйста, выберите обе даты'); } });
 
         // Timeseries handlers
-        document.querySelectorAll('[data-granularity]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-granularity]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentGranularity = this.dataset.granularity; loadTimeseriesData(); }); });
-        document.querySelectorAll('[data-period]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-period]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentPeriod = this.dataset.period; var el = document.getElementById('timeseries-custom-period'); if (currentPeriod === 'custom') { el.style.display = 'flex'; } else { el.style.display = 'none'; loadTimeseriesData(); } }); });
+        document.querySelectorAll('[data-ts-granularity]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-ts-granularity]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentGranularity = this.dataset.tsGranularity; loadTimeseriesData(); }); });
+        document.querySelectorAll('[data-ts-period]').forEach(btn => { btn.addEventListener('click', function() { document.querySelectorAll('[data-ts-period]').forEach(b => b.classList.remove('active')); this.classList.add('active'); currentPeriod = this.dataset.tsPeriod; var el = document.getElementById('timeseries-custom-period'); if (currentPeriod === 'custom') { el.style.display = 'flex'; } else { el.style.display = 'none'; loadTimeseriesData(); } }); });
         document.getElementById('apply-custom-period').addEventListener('click', function() { customDateFrom = document.getElementById('date-from').value; customDateTo = document.getElementById('date-to').value; if (customDateFrom && customDateTo) { loadTimeseriesData(); } else { alert('Пожалуйста, выберите обе даты'); } });
 
         // Actions per user handlers
