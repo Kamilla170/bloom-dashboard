@@ -3,7 +3,7 @@ import asyncpg
 import os
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -112,12 +112,18 @@ async def shutdown():
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Главная страница"""
-    # Получаем путь относительно текущего файла
     current_dir = Path(__file__).parent
     html_path = current_dir / "static" / "index.html"
     
     if html_path.exists():
-        return FileResponse(html_path)
+        return FileResponse(
+            html_path,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     else:
         logger.error(f"❌ Файл не найден: {html_path}")
         return HTMLResponse("<h1>Dashboard</h1><p>Error: index.html not found</p>")
